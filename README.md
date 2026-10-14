@@ -143,6 +143,15 @@ node tools/test_web_subscriptions.mjs
    | BUSY | GPIO 7 |
    | PWR（新款微雪模块才有） | 3V3 |
 
+   开发板自带的 RGB 灯：
+
+   | 器件 | ESP32-S3 | 说明 |
+   |------|----------|------|
+   | WS2818 RGB 灯（板载） | GPIO 48 | 单线串行协议，一颗灯珠，数据脚直接接 IO48；与上面墨水屏的接线不冲突，不用占用 |
+
+   > 这颗灯是单线可寻址 RGB 灯，不能当普通 LED 用 `digitalWrite` 点亮，要用 `neopixelWrite(48, r, g, b)`（Arduino-ESP32 自带）
+   > 或者 FastLED / Adafruit NeoPixel 等库驱动，颜色顺序一般按 GRB 处理。目前固件还没有用到它。
+
 2. `include/config.h` 里把 `EPD_ENABLED` 改成 `1`。
 3. 驱动已按屏幕 IC（UC8176）设为 `GxEPD2_420c`，不用改。刷不出来时先查接线，串口出现 `Busy Timeout` 先检查 BUSY 线。
    以后换别的屏：UC8276 用 `GxEPD2_420c_Z21`，SSD1683 用 `GxEPD2_420c_GDEY042Z98`。
