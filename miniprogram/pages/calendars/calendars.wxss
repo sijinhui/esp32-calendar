@@ -1,0 +1,20 @@
+.url {
+  flex: 1;
+  margin-right: 12px;
+  word-break: break-all;
+}
+
+.link {
+  color: #c82a2a;
+}
+
+.input {
+  width: auto;
+  min-height: 60px;
+  font-size: 13px;
+}
+
+.help {
+  margin: 18px 4px;
+  line-height: 1.8;
+}

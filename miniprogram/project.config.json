@@ -1,0 +1,14 @@
+{
+  "description": "墨水屏日历：蓝牙配网、查看画面、设置日历订阅",
+  "projectname": "epaper-calendar",
+  "appid": "touristappid",
+  "compileType": "miniprogram",
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true
+  },
+  "condition": {}
+}

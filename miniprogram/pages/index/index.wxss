@@ -1,0 +1,33 @@
+.empty .intro {
+  margin: 10px 0 18px;
+  line-height: 1.6;
+}
+
+.head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+
+.screen {
+  width: 100%;
+  border-radius: 4px;
+  background: #f4f4f2;
+  box-shadow: 0 0 0 1px #e2e2de;
+}
+
+.center {
+  text-align: center;
+  margin-top: 10px;
+}
+
+.warn {
+  white-space: pre-wrap;
+}
+
+.value {
+  max-width: 70%;
+  text-align: right;
+  word-break: break-all;
+}

@@ -1,0 +1,30 @@
+<view class="page">
+  <view wx:if="{{error}}" class="card warn">{{error}}</view>
+
+  <view class="section-title">已添加的订阅</view>
+  <view class="card">
+    <view class="list-item" wx:for="{{items}}" wx:key="url">
+      <text class="url">{{item.label}}</text>
+      <text class="link" data-index="{{index}}" bindtap="onRemove">删除</text>
+    </view>
+    <view wx:if="{{!items.length}}" class="muted">{{loading ? '读取中…' : '还没有添加'}}</view>
+  </view>
+
+  <view class="section-title">添加订阅</view>
+  <view class="card">
+    <textarea class="field input" placeholder="粘贴 iCal 订阅地址（https:// 或 webcal:// 开头）" value="{{input}}"
+              maxlength="-1" auto-height bindinput="onInput" />
+    <view class="btn" hover-class="btn-hover" bindtap="onAdd">添加</view>
+  </view>
+
+  <view class="btn primary {{saving || !dirty ? 'disabled' : ''}}" hover-class="btn-hover" bindtap="onSave">
+    {{saving ? '保存中…' : '保存到设备'}}
+  </view>
+
+  <view class="muted help">
+    <view>怎么获取订阅地址：</view>
+    <view>· Google 日历：网页版 设置 → 选中某个日历 → “iCal 格式的私密地址”</view>
+    <view>· iCloud：日历 App 里共享日历 → 勾选“公开日历”，复制链接</view>
+    <view>· Outlook：设置 → 日历 → 共享日历 → 发布日历 → ICS 链接</view>
+  </view>
+</view>

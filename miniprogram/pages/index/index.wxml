@@ -1,0 +1,43 @@
+<view class="page">
+  <block wx:if="{{!device}}">
+    <view class="card empty">
+      <view class="title">还没有添加日历</view>
+      <view class="muted intro">给墨水屏日历通电，第一次开机它会自动进入配网模式。点下面的按钮，用蓝牙把家里的 WiFi 告诉它。</view>
+      <view class="btn primary" hover-class="btn-hover" bindtap="goProvision">添加设备</view>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="card">
+      <view class="head">
+        <text class="title">{{device.name}}</text>
+        <text class="muted">{{device.ip}}</text>
+      </view>
+      <canvas type="2d" id="screen" class="screen" style="height: {{screenHeight}}px"></canvas>
+      <view wx:if="{{state === 'loading'}}" class="muted center">正在连接设备…</view>
+      <view wx:if="{{state === 'offline'}}" class="warn">{{hint}}</view>
+    </view>
+
+    <view wx:if="{{state === 'ok'}}" class="card">
+      <view class="list-item" wx:for="{{lines}}" wx:key="label">
+        <text class="muted">{{item.label}}</text>
+        <text class="value">{{item.value}}</text>
+      </view>
+    </view>
+
+    <view wx:if="{{state === 'ok'}}" class="actions">
+      <view class="btn" hover-class="btn-hover" bindtap="onSync">立即同步</view>
+      <picker mode="date" value="{{previewDate}}" bindchange="onPreviewDate">
+        <view class="btn" hover-class="btn-hover">预览某天</view>
+      </picker>
+      <view wx:if="{{status.preview}}" class="btn" hover-class="btn-hover" bindtap="onToday">回到今天</view>
+      <view class="btn" hover-class="btn-hover" bindtap="goCalendars">日历订阅</view>
+    </view>
+
+    <view class="actions">
+      <view wx:if="{{state === 'offline'}}" class="btn primary" hover-class="btn-hover" bindtap="refresh">重试</view>
+      <view class="btn" hover-class="btn-hover" bindtap="goProvision">重新配网</view>
+      <view class="btn" hover-class="btn-hover" bindtap="onForget">移除设备</view>
+    </view>
+  </block>
+</view>

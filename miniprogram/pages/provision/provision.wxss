@@ -1,0 +1,43 @@
+.tips {
+  margin: 0 4px 14px;
+  line-height: 1.6;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.link {
+  color: #c82a2a;
+}
+
+.aps {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.selected {
+  color: #c82a2a;
+  font-weight: 600;
+}
+
+.password {
+  position: relative;
+}
+
+.password .field {
+  padding-right: 56px;
+}
+
+.eye {
+  position: absolute;
+  right: 12px;
+  top: 11px;
+  font-size: 14px;
+}
+
+.done-text {
+  margin-top: 10px;
+  line-height: 1.6;
+}

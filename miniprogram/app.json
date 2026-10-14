@@ -1,0 +1,16 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/provision/provision",
+    "pages/calendars/calendars"
+  ],
+  "window": {
+    "navigationBarTitleText": "墨水屏日历",
+    "navigationBarBackgroundColor": "#2a2a2a",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#f4f4f2"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}
