@@ -26,6 +26,7 @@
 #include "EpdOutput.h"
 #include "Log.h"
 #include "Settings.h"
+#include "StatusLed.h"
 #include "WebPreview.h"
 #include "WifiManager.h"
 #include "config.h"
@@ -300,6 +301,8 @@ void runSync(bool online) {
     LOGF("%d 秒没连上 WiFi，等下次同步再试（连续 %d 次）", WIFI_SYNC_TIMEOUT_S, wifiFailures);
   }
   if (net::timeValid()) syncData();
+  led::setSyncing(false);
+  led::showResult(online && net::timeValid() && icsResult.error.empty());
   render(previewDay < 0);
   syncing = false;
   wifi::holdForSync(false);
@@ -307,6 +310,8 @@ void runSync(bool online) {
 
 // 每秒检查一次：配网画面、预览超时、该不该同步
 void tick() {
+  led::setProvisioning(wifi::provisioning());
+
   // 进入 / 退出配网模式时更新墨水屏
   if (showSetup() != epdShowsSetup) render(true);
 
@@ -319,6 +324,7 @@ void tick() {
   if (!syncing && secondsUntilSync() <= 0) {
     syncing = true;
     syncWaitSince = millis();
+    led::setSyncing(true);
     wifi::holdForSync(true);  // 省电模式下这时才打开 WiFi
   }
   if (syncing) {
@@ -333,7 +339,7 @@ void tick() {
 // 省电模式：WiFi 关着、没事可做时浅睡眠（内存保留，醒来接着跑），到下次同步或者按 BOOT 键时醒来
 void sleepIfIdle() {
 #if !DEBUG_MODE
-  if (syncing || wifi::radioOn() || ble::active() || digitalRead(BUTTON_PIN) == LOW) return;
+  if (syncing || wifi::radioOn() || ble::active() || !led::idle() || digitalRead(BUTTON_PIN) == LOW) return;
   const int32_t seconds = secondsUntilSync();
   if (seconds <= 0) return;
   LOGF("浅睡眠 %ld 秒（短按 BOOT 键可唤醒）", static_cast<long>(seconds));
@@ -372,6 +378,7 @@ void setup() {
   tzset();
   settings::begin();
   epd::begin();
+  led::begin();
   LOGF("%s", DEBUG_MODE ? "开发模式：WiFi 一直联网，不睡眠" : "省电模式：WiFi 按需打开，空闲时浅睡眠");
   wifi::begin();  // 不阻塞：连上 WiFi 后在 loop() 里对时、同步
   wifi::openWindow(WIFI_WINDOW_S * 1000UL);  // 开机后先联网一段时间，方便用网页 / 小程序查看和设置
@@ -384,7 +391,10 @@ void setup() {
     render(false);  // 预览只画到网页，不动墨水屏
   };
   hooks.sync = [] {
+    led::setSyncing(true);
     syncData();
+    led::setSyncing(false);
+    led::showResult(net::timeValid() && icsResult.error.empty());
     render(previewDay < 0);
   };
   hooks.pushEpd = [] {
