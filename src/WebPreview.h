@@ -22,5 +22,8 @@ struct Hooks {
 
 void begin(const Canvas3C& canvas, const Hooks& hooks);
 void loop();
+// WiFi 关闭前 / 打开后调用：关掉 / 重新打开监听端口和 mDNS（WiFi 驱动释放前，连接必须都关掉）
+void pause();
+void resume();
 
 }  // namespace web

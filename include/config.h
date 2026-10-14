@@ -40,7 +40,13 @@
 #define AGENDA_DAYS 7         // 右侧日程列表显示今天起几天内的日程
 
 // ===================== 数据同步 =====================
-#define ICS_SYNC_MINUTES 30  // 在线日历多久同步一次
+#ifndef ICS_SYNC_MINUTES
+#define ICS_SYNC_MINUTES 30  // 在线日历多久同步一次（省电模式下每次都要打开 WiFi）
+#endif
+#define SYNC_FAIL_SHOW_AFTER 3  // 连续失败几次才在屏幕上显示“WiFi 未连接 / 同步失败”（偶尔失败一次不值得刷一次三色屏）
+#define HTTP_CONNECT_TIMEOUT_MS 5000  // 每个请求：TCP 连接超时
+#define HTTP_TLS_TIMEOUT_S 10         //           HTTPS 握手超时（库默认 120 秒）
+#define HTTP_READ_TIMEOUT_MS 10000    //           等待数据超时（多久收不到数据算失败，不是整个下载的时间）
 // 法定节假日 / 调休数据：https://github.com/NateScarlet/holiday-cn
 #define HOLIDAY_URL_FMT "https://fastly.jsdelivr.net/gh/NateScarlet/holiday-cn@master/%d.json"
 
@@ -54,9 +60,27 @@
 #define RGB_LED_DONE_MS 3000   // 同步成功（绿）/ 失败（红）后灯亮多久
 #define RGB_LED_BLINK_MS 500   // 慢闪：亮 / 灭各多久（同步中、配网）
 
+// ===================== 功耗 =====================
+// 开发模式：1 = WiFi 一直连着、不睡眠（串口日志不断，网页随时能打开，跟以前一样）
+//           0 = 省电模式：WiFi 平时关闭、CPU 浅睡眠，到点醒来同步；短按 BOOT 键打开 WiFi 和网页 WIFI_WINDOW_S 秒
+// 屏幕还没到、要靠网页看画面时用 1；接好屏幕、调试完再改成 0。
+// 注意：省电模式睡眠时 USB 串口会断开，要烧录先短按 BOOT 键把设备叫醒（或者按住 BOOT 再按 RST 进下载模式）
+#ifndef DEBUG_MODE
+#define DEBUG_MODE 1
+#endif
+#ifndef WIFI_WINDOW_S
+#define WIFI_WINDOW_S 300  // 开机后 / 短按 BOOT 键后 / 配网成功后，WiFi 和网页保持打开多久
+#endif
+#define WIFI_SYNC_TIMEOUT_S 20  // 省电模式：同步时打开 WiFi，多久连不上就放弃，等下次同步
+
+// 平时只需要维持 WiFi 和网页服务，80MHz 足够（WiFi 要求不低于 80MHz）；
+// 同步数据时临时升到 240MHz，HTTPS 握手和 iCal 解析快一些，早点回到低频
+#define CPU_MHZ_IDLE 80
+#define CPU_MHZ_SYNC 240
+
 // ===================== 配网 =====================
-// 进入配网模式后，设备开热点 EPaper-XXXX，同时蓝牙接受微信小程序的配置
-#define BUTTON_PIN 0                // 开发板上的 BOOT 键：长按进入配网模式
+// 进入配网模式后，设备开热点 EPaper-XXXX，同时打开蓝牙接受微信小程序的配置；平时蓝牙关闭省电
+#define BUTTON_PIN 0                // 开发板上的 BOOT 键：长按进入配网模式，短按打开 WiFi 和网页（省电模式）
 #define BUTTON_HOLD_MS 3000
-#define WIFI_PROVISION_AFTER_S 30   // 已保存的 WiFi 连不上多久后自动打开配网热点
+#define WIFI_PROVISION_AFTER_S 30   // 开发模式：已保存的 WiFi 连不上多久后自动打开配网热点（省电模式不自动开）
 #define AP_PASSWORD ""              // 配网热点密码（8 位以上），空 = 不设密码

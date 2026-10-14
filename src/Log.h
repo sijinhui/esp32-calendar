@@ -12,6 +12,14 @@ class DualLog : public Print {
 #endif
   }
 
+  // 睡眠前把缓冲区里的日志发完，否则醒来后串口会乱码
+  void flushAll() {
+    Serial.flush();
+#if ARDUINO_USB_CDC_ON_BOOT
+    Serial0.flush();
+#endif
+  }
+
   size_t write(uint8_t c) override { return write(&c, 1); }
 
   size_t write(const uint8_t* buf, size_t n) override {

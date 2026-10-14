@@ -461,4 +461,15 @@ void begin(const Canvas3C& c, const Hooks& h) {
 
 void loop() { server.handleClient(); }
 
+void pause() {
+  server.client().stop();
+  server.stop();
+  MDNS.end();
+}
+
+void resume() {
+  server.begin();
+  if (MDNS.begin(HOSTNAME)) MDNS.addService("http", "tcp", 80);
+}
+
 }  // namespace web

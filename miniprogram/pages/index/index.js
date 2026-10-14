@@ -110,9 +110,10 @@ Page({
         console.warn('新 IP 也连不上', e);
       }
     }
-    let hint = '连不上设备。请确认手机和设备连的是同一个 WiFi，并允许微信访问“本地网络”。';
+    let hint = '连不上设备。请确认手机和设备连的是同一个 WiFi，并允许微信访问“本地网络”。\n设备在省电模式下平时不联网：短按设备上的 BOOT 键，WiFi 会打开 5 分钟。';
     if (found && found.provisioning && !found.online) hint = '设备没有连上 WiFi，正在配网模式。点“重新配网”设置 WiFi。';
-    if (!found) hint += '\n蓝牙也没有搜到设备，请确认设备已通电并在附近。';
+    // 设备平时不开蓝牙，只有配网模式下才搜得到
+    if (!found) hint += '\n如果设备 IP 变了：长按设备上的 BOOT 键 3 秒进入配网模式，再下拉刷新，就能通过蓝牙找到新 IP（建议在路由器里给设备固定 IP）。';
     this.setData({ state: 'offline', hint });
   },
 

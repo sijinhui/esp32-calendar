@@ -13,9 +13,9 @@ volatile bool provisioning = false;
 volatile bool resultPending = false;  // 同步结果还没轮到显示（比如又开始同步了）
 volatile bool resultOk = false;
 
-uint32_t doneUntil = 0;  // 结果灯亮到什么时候（millis），0 = 没在亮
+volatile uint32_t doneUntil = 0;  // 结果灯亮到什么时候（millis），0 = 没在亮
 bool doneOk = false;
-uint32_t shown = 0xFFFFFFFF;
+volatile uint32_t shown = 0xFFFFFFFF;
 
 uint8_t scale(uint8_t v) { return (uint16_t(v) * RGB_LED_BRIGHTNESS + 127) / 255; }
 
@@ -74,5 +74,7 @@ void showResult(bool ok) {
   resultOk = ok;
   resultPending = true;
 }
+
+bool idle() { return !syncing && !provisioning && !resultPending && !doneUntil && shown == 0; }
 
 }  // namespace led
