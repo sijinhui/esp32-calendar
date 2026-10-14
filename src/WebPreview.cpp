@@ -39,6 +39,7 @@ pre{margin:0;font-size:12px;color:#999;white-space:pre-wrap;max-width:800px}
   <button onclick="post('/api/preview')">回到今天</button>
   <button onclick="post('/api/sync')">立即同步</button>
   <button id="epd" hidden onclick="post('/api/epd')">刷到墨水屏</button>
+  <button onclick="checkUpdate()">检查更新</button>
   <button onclick="location.href='/setup'">设置</button>
 </div>
 <pre id="status">加载中…</pre>
@@ -56,6 +57,12 @@ async function post(url) {
   $('status').textContent = '处理中…（同步日历或刷新墨水屏可能需要十几秒）';
   await fetch(url, {method: 'POST'});
   refresh();
+}
+async function checkUpdate() {
+  $('status').textContent = '正在检查更新…（有新版本会下载固件，需要一两分钟，完成后设备自动重启）';
+  try {
+    $('status').textContent = await (await fetch('/api/update', {method: 'POST'})).text();
+  } catch (e) { $('status').textContent = '连接设备失败'; }
 }
 function preview() { if ($('date').value) post('/api/preview?date=' + $('date').value); }
 refresh();
@@ -444,6 +451,7 @@ void begin(const Canvas3C& c, const Hooks& h) {
   server.on("/api/preview", HTTP_POST, handlePreview);
   server.on("/api/sync", HTTP_POST, [] { handleAction(hooks.sync); });
   server.on("/api/epd", HTTP_POST, [] { handleAction(hooks.pushEpd); });
+  server.on("/api/update", HTTP_POST, [] { sendText(200, hooks.update ? hooks.update() : "不支持"); });
   server.on("/api/config", HTTP_GET, handleConfigGet);
   server.on("/api/config", HTTP_POST, handleConfigPost);
   server.on("/api/scan", HTTP_GET, handleScan);

@@ -25,6 +25,7 @@
 #include "DataSync.h"
 #include "EpdOutput.h"
 #include "Log.h"
+#include "Ota.h"
 #include "Settings.h"
 #include "StatusLed.h"
 #include "WebPreview.h"
@@ -43,6 +44,9 @@ time_t lastSync = 0;          // 上次同步数据的时间
 int32_t syncedDay = -1;       // 上次同步数据是哪一天（跨天要重新同步）
 bool syncedOnline = false;    // 上次同步时是否联网（软复位后时间还在，可能在连上 WiFi 之前就同步了）
 int32_t holidayDay = -1;      // 哪一天下载过节假日数据（一天只下载一次）
+int32_t otaDay = -1;          // 哪一天检查过固件更新（一天只查一次）
+ota::Result otaResult;        // 上次检查更新的结果
+uint32_t restartAt = 0;       // 网页上手动升级成功后，等回复发出去再重启（millis）
 int icsFailures = 0;          // 日历连续同步失败的次数
 int wifiFailures = 0;         // 同步时连续连不上 WiFi 的次数
 bool syncing = false;         // 到点该同步了，正在等 WiFi 连上
@@ -228,6 +232,9 @@ void fillStatus(JsonDocument& doc) {
   doc["low_power"] = !DEBUG_MODE;
   doc["events"] = events.size();
   doc["epd"] = epd::enabled();
+  doc["version"] = ota::version();
+  if (!otaResult.latest.empty()) doc["latest_version"] = otaResult.latest;
+  if (!otaResult.error.empty()) doc["update_error"] = otaResult.error;
   doc["free_heap"] = ESP.getFreeHeap();
   doc["cpu_mhz"] = getCpuFrequencyMhz();
   doc["uptime_s"] = millis() / 1000;
@@ -290,6 +297,22 @@ int32_t secondsUntilSync() {
   return std::min(untilDue, untilMidnight);
 }
 
+// 每天第一次联网同步后检查一次固件更新；有新版本就下载，装好后重启
+void checkUpdateDaily() {
+  int y, m, d;
+  if (!ota::autoUpdate() || !wifi::connected() || !today(y, m, d)) return;
+  const int32_t day = cal::daysFromCivil(y, m, d);
+  if (otaDay == day) return;
+  otaDay = day;
+  CpuBoost boost;
+  otaResult = ota::checkAndUpdate(false);
+  if (otaResult.updated) {
+    LOGF("新固件 %s 已装好，重启", otaResult.latest.c_str());
+    Log.flushAll();
+    ESP.restart();
+  }
+}
+
 // WiFi 连上了（online）或者等超时了：对时、同步、重画
 void runSync(bool online) {
   lastAttempt = millis();
@@ -301,6 +324,7 @@ void runSync(bool online) {
     LOGF("%d 秒没连上 WiFi，等下次同步再试（连续 %d 次）", WIFI_SYNC_TIMEOUT_S, wifiFailures);
   }
   if (net::timeValid()) syncData();
+  checkUpdateDaily();
   led::setSyncing(false);
   led::showResult(online && net::timeValid() && icsResult.error.empty());
   render(previewDay < 0);
@@ -310,6 +334,10 @@ void runSync(bool online) {
 
 // 每秒检查一次：配网画面、预览超时、该不该同步
 void tick() {
+  if (restartAt && millis() - restartAt > 2000) {
+    Log.flushAll();
+    ESP.restart();
+  }
   led::setProvisioning(wifi::provisioning());
 
   // 进入 / 退出配网模式时更新墨水屏
@@ -403,6 +431,20 @@ void setup() {
     epdChecksum = canvas.checksum();
   };
   hooks.statusJson = statusJson;
+  hooks.update = [] {
+    led::setSyncing(true);
+    {
+      CpuBoost boost;
+      otaResult = ota::checkAndUpdate(true);
+    }
+    led::setSyncing(false);
+    if (otaResult.updated) {
+      restartAt = millis();
+      return "已升级到 " + otaResult.latest + "，设备正在重启";
+    }
+    if (!otaResult.error.empty()) return "检查更新失败：" + otaResult.error;
+    return std::string("已是最新版本 ") + ota::version();
+  };
   web::begin(canvas, hooks);
   wifi::onPower([](bool on) { on ? web::resume() : web::pause(); });
 
