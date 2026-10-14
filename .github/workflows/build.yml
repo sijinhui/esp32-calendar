@@ -58,13 +58,27 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           PLATFORMIO_BUILD_FLAGS="-DFW_VERSION=\\\"$VERSION\\\"" pio run -e esp32s3
           grep -qa "$VERSION" .pio/build/esp32s3/firmware.bin || { echo "固件里找不到版本号 $VERSION"; exit 1; }
-      - name: 检查 OTA 用的根证书还能连上 GitHub
+      - name: 检查 OTA 用的根证书还能连上 GitHub 和镜像
         run: |
-          sed -n '/BEGIN CERTIFICATE/,/END CERTIFICATE/p' src/GithubRootCAs.h > roots.pem
+          sed -n '/BEGIN CERTIFICATE/,/END CERTIFICATE/p' src/OtaRootCAs.h > roots.pem
+          check() { echo | openssl s_client -connect $1:443 -servername $1 -CAfile roots.pem -verify_return_error > /dev/null 2>&1; }
           # 固件下载会从 github.com 跳转到这两个文件服务器
-          for host in api.github.com github.com release-assets.githubusercontent.com objects.githubusercontent.com; do
-            echo | openssl s_client -connect $host:443 -servername $host -CAfile roots.pem -verify_return_error \
-              > /dev/null 2>&1 && echo "OK  $host" || { echo "根证书校验失败：$host（GitHub 可能换了证书机构，需要更新 src/GithubRootCAs.h）"; exit 1; }
+          for host in github.com release-assets.githubusercontent.com objects.githubusercontent.com; do
+            check $host && echo "OK  $host" || { echo "根证书校验失败：$host（GitHub 可能换了证书机构，需要更新 src/OtaRootCAs.h）"; exit 1; }
+          done
+          # 镜像是第三方服务，偶尔连不上不算失败，只提醒
+          for prefix in $(grep '^#define OTA_MIRRORS' include/config.h | grep -o '"https://[^"]*' | tr -d '"'); do
+            host=$(echo $prefix | cut -d/ -f3)
+            if ! check $host; then
+              issuer=$(echo | openssl s_client -connect $host:443 -servername $host -showcerts 2>/dev/null | grep -m1 'i:' || true)
+              echo "::warning::镜像 $host 证书校验失败（$issuer），设备会跳过它；如果是换了证书机构，把根证书加到 src/OtaRootCAs.h"
+              continue
+            fi
+            # 按设备的方式通过镜像下载最新 Release 的固件，看能不能下载
+            code=$(curl -sS -L --max-time 120 -o mirror.bin -w '%{http_code}' \
+              "${prefix}https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/firmware.bin" || true)
+            echo "OK  $host 证书；下载最新固件 HTTP $code，$(stat -c %s mirror.bin 2>/dev/null || echo 0) 字节"
+            [ "$code" = 200 ] || echo "::warning::镜像 $prefix 下载失败（HTTP $code）"
           done
       - name: 打包
         run: |
@@ -76,6 +90,10 @@ jobs:
           python ~/.platformio/packages/tool-esptoolpy/esptool.py --chip esp32s3 merge_bin \
             -o dist/firmware-merged.bin --flash_mode keep --flash_freq keep --flash_size 16MB \
             0x0 $B/bootloader.bin 0x8000 $B/partitions.bin 0xe000 "$BOOT_APP0" 0x10000 $B/firmware.bin
+          # 设备检查更新时读这个文件（版本号、大小、MD5），不用调 api.github.com，镜像也能代理
+          printf '{"version":"%s","size":%d,"md5":"%s"}\n' "$VERSION" $(stat -c %s $B/firmware.bin) \
+            $(md5sum $B/firmware.bin | cut -d' ' -f1) > dist/latest.json
+          cat dist/latest.json
           ls -l dist
       - uses: actions/upload-artifact@v4
         with:

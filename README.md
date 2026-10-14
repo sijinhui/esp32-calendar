@@ -23,7 +23,7 @@ src/Canvas3C.*             三色帧缓冲
 src/EpdOutput.*            GxEPD2 墨水屏输出（EPD_ENABLED=0 时为空操作）
 src/WebPreview.*           设备网页（画面预览、设置页）和 JSON 接口
 src/DataSync.*             WiFi / NTP / 节假日 / iCal 下载
-src/Ota.*                  在线升级：从 GitHub Release 下载固件
+src/Ota.*                  在线升级：从 GitHub Release（或国内镜像）下载固件
 lib/ChineseCalendar/       农历、节气、节日（纯 C++）
 lib/HolidayCN/             法定节假日数据解析（纯 C++）
 lib/IcsParser/             流式 iCal 解析与重复事件展开（纯 C++）
@@ -136,13 +136,16 @@ node tools/test_web_subscriptions.mjs
 固件由 GitHub Actions 编译（`.github/workflows/build.yml`），设备从 GitHub Release 下载升级：
 
 1. 在 GitHub 上新建 Release（tag 用 `v1.0.0` 这样的版本号）并发布。
-2. Actions 自动编译固件，把版本号（tag 名）编译进去，几分钟后 `firmware.bin` 等文件出现在这个 Release 里。
-3. 设备每天第一次同步时检查最新 Release，tag 跟自己的版本不同就下载 `firmware.bin`，写到另一个固件分区后重启。
+2. Actions 自动编译固件，把版本号（tag 名）编译进去，几分钟后 `firmware.bin`、`latest.json` 等文件出现在这个 Release 里。
+3. 设备每天第一次同步时读最新 Release 的 `latest.json`，版本跟自己不同就下载 `firmware.bin`，校验大小和 MD5，
+   写到另一个固件分区后重启。
    网页上点“检查更新”可以立即升级；`/api/status` 里的 `version` 是当前版本。
 
 - 第一次要用 USB 烧一个 Release 里的固件（`firmware-merged.bin` 从 0x0 烧），之后就能自动升级。
 - 自己用 `pio run` 编译的固件版本是 `dev`，不会自动升级（免得开发中的固件被覆盖），点“检查更新”可以手动升级。
-- 下载时校验 GitHub 的 HTTPS 证书（根证书在 `src/GithubRootCAs.h`，CI 每次构建都会检查是否还有效）。
+- 国内直连 GitHub 慢，默认先走镜像 `cdn.gh-proxy.org`、`proxy.xiaosi.cc`，都不行再直连；在 `config.h` 的 `OTA_MIRRORS` 里改。
+  镜像能看到并改动下载内容，用镜像就等于信任镜像。
+- 下载时校验 HTTPS 证书（根证书在 `src/OtaRootCAs.h`，CI 每次构建都会检查 GitHub 和镜像的证书，并试着通过镜像下载）。
 - 草稿和预发布（pre-release）的 Release 不会被设备下载，可以先用来测试。
 - 不想自动升级：`config.h` 里 `OTA_ENABLED` 改成 0。
 
