@@ -52,6 +52,18 @@
 
 #define HOSTNAME "epaper-calendar"  // 局域网访问 http://epaper-calendar.local/
 
+// ===================== 在线升级 =====================
+// 每天第一次同步后检查 GitHub 上的最新 Release，有新版本就自动下载升级（见 src/Ota.h）
+#ifndef OTA_ENABLED
+#define OTA_ENABLED 1
+#endif
+#define OTA_REPO "sijinhui/esp32-calendar"  // 从哪个仓库的 Release 下载
+#define OTA_ASSET "firmware.bin"            // Release 里的固件文件名（CI 自动上传）
+// 固件版本：CI 编译 Release 时设成 tag 名（如 v1.2.0）；自己编译的是 dev，不会自动升级
+#ifndef FW_VERSION
+#define FW_VERSION "dev"
+#endif
+
 // ===================== 状态灯 =====================
 // 板载 WS2818 RGB 灯，平时熄灭，只在同步中 / 同步结果 / 配网中亮（见 src/StatusLed.h）
 // 乐鑫 ESP32-S3-DevKitC-1 v1.0 接 GPIO48，v1.1 接 GPIO38；板子不同请改这里

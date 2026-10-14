@@ -3,9 +3,11 @@ name: Build
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
   workflow_dispatch:
+  # 在 GitHub 上新建并发布 Release 时编译固件、上传到这个 Release；设备的在线升级从这里下载 firmware.bin
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -44,7 +46,26 @@ jobs:
           key: pio-esp32s3-${{ hashFiles('platformio.ini') }}
       - run: pip install platformio
       - name: 编译固件
-        run: pio run -e esp32s3
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          # 版本号编译进固件：Release 用 tag 名（设备拿它跟最新 Release 比较），其余是 dev-<commit>（不自动升级）
+          if [ "${{ github.event_name }}" = release ]; then
+            VERSION="$TAG"
+          else
+            VERSION="dev-${GITHUB_SHA::7}"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          PLATFORMIO_BUILD_FLAGS="-DFW_VERSION=\\\"$VERSION\\\"" pio run -e esp32s3
+          grep -qa "$VERSION" .pio/build/esp32s3/firmware.bin || { echo "固件里找不到版本号 $VERSION"; exit 1; }
+      - name: 检查 OTA 用的根证书还能连上 GitHub
+        run: |
+          sed -n '/BEGIN CERTIFICATE/,/END CERTIFICATE/p' src/GithubRootCAs.h > roots.pem
+          # 固件下载会从 github.com 跳转到这两个文件服务器
+          for host in api.github.com github.com release-assets.githubusercontent.com objects.githubusercontent.com; do
+            echo | openssl s_client -connect $host:443 -servername $host -CAfile roots.pem -verify_return_error \
+              > /dev/null 2>&1 && echo "OK  $host" || { echo "根证书校验失败：$host（GitHub 可能换了证书机构，需要更新 src/GithubRootCAs.h）"; exit 1; }
+          done
       - name: 打包
         run: |
           B=.pio/build/esp32s3
@@ -62,7 +83,7 @@ jobs:
           path: dist/
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'release'
     needs: [test, firmware]
     runs-on: ubuntu-latest
     permissions:
@@ -72,7 +93,8 @@ jobs:
         with:
           name: firmware-esp32s3-${{ github.sha }}
           path: dist
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*
-          generate_release_notes: true
+      - name: 上传到 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"

@@ -8,6 +8,7 @@
 #include <Arduino.h>
 
 #include <functional>
+#include <string>
 
 #include "Canvas3C.h"
 
@@ -18,6 +19,7 @@ struct Hooks {
   std::function<void()> sync;                        // 立即同步数据并重绘
   std::function<void()> pushEpd;                     // 把当前画面刷到墨水屏
   std::function<String()> statusJson;                // 运行状态
+  std::function<std::string()> update;               // 检查固件更新并升级，返回给用户看的结果
 };
 
 void begin(const Canvas3C& canvas, const Hooks& hooks);

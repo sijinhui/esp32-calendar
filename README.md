@@ -23,6 +23,7 @@ src/Canvas3C.*             三色帧缓冲
 src/EpdOutput.*            GxEPD2 墨水屏输出（EPD_ENABLED=0 时为空操作）
 src/WebPreview.*           设备网页（画面预览、设置页）和 JSON 接口
 src/DataSync.*             WiFi / NTP / 节假日 / iCal 下载
+src/Ota.*                  在线升级：从 GitHub Release 下载固件
 lib/ChineseCalendar/       农历、节气、节日（纯 C++）
 lib/HolidayCN/             法定节假日数据解析（纯 C++）
 lib/IcsParser/             流式 iCal 解析与重复事件展开（纯 C++）
@@ -47,7 +48,7 @@ tools/gen_lunar_data.py    重新生成农历 / 节气数据表
 4. 浏览器打开 `http://epaper-calendar.local/`（或者串口日志里打印的 IP），看到的就是屏幕上的画面。
    可以选任意日期预览（比如春节、国庆），也可以手动触发同步；点“设置”添加日历订阅。
 
-> 分区按 N16R8 模组（16MB Flash + 8MB PSRAM）配置，留了两个固件分区给以后的 OTA 升级。
+> 分区按 N16R8 模组（16MB Flash + 8MB PSRAM）配置，两个固件分区用于在线升级（见下面“在线升级”）。
 > 换成 4MB 的模组要把 `platformio.ini` 改回 `huge_app.csv`，并去掉 PSRAM 相关的两行。
 
 ## 配网
@@ -130,6 +131,23 @@ node tools/test_web_subscriptions.mjs
 覆盖农历转换（逐日校验 1900–2100 年连续性）、节气、节日、节假日解析、iCal 解析（折叠行、时区、全天 / 跨天、
 每周 / 每月 / 每年重复、EXDATE、单次修改）。农历和节气数据已与 lunar_python 逐日比对，1901–2100 年完全一致。
 
+## 在线升级
+
+固件由 GitHub Actions 编译（`.github/workflows/build.yml`），设备从 GitHub Release 下载升级：
+
+1. 在 GitHub 上新建 Release（tag 用 `v1.0.0` 这样的版本号）并发布。
+2. Actions 自动编译固件，把版本号（tag 名）编译进去，几分钟后 `firmware.bin` 等文件出现在这个 Release 里。
+3. 设备每天第一次同步时检查最新 Release，tag 跟自己的版本不同就下载 `firmware.bin`，写到另一个固件分区后重启。
+   网页上点“检查更新”可以立即升级；`/api/status` 里的 `version` 是当前版本。
+
+- 第一次要用 USB 烧一个 Release 里的固件（`firmware-merged.bin` 从 0x0 烧），之后就能自动升级。
+- 自己用 `pio run` 编译的固件版本是 `dev`，不会自动升级（免得开发中的固件被覆盖），点“检查更新”可以手动升级。
+- 下载时校验 GitHub 的 HTTPS 证书（根证书在 `src/GithubRootCAs.h`，CI 每次构建都会检查是否还有效）。
+- 草稿和预发布（pre-release）的 Release 不会被设备下载，可以先用来测试。
+- 不想自动升级：`config.h` 里 `OTA_ENABLED` 改成 0。
+
+每次推送和 PR 也会编译固件、跑单元测试，产物在 Actions 页面的 Artifacts 里（版本号是 `dev-<commit>`）。
+
 ## 省电模式
 
 `include/config.h` 里的 `DEBUG_MODE`：
@@ -193,7 +211,8 @@ node tools/test_web_subscriptions.mjs
 
 - iCal 里带 TZID 的时间都按本地时间处理（日历和设备在同一时区时没问题）。
 - 不支持的重复规则（BYSETPOS、每月多个 BYDAY 等）只显示第一次，串口日志里会提示。
-- HTTPS 不校验证书（`setInsecure`），省去维护根证书。
+- 日历和节假日下载不校验 HTTPS 证书（`setInsecure`），省去维护根证书；在线升级会校验。
+- 新固件开机就崩溃的话不会自动退回旧版本，需要用 USB 重新烧录。
 - 字体是文泉驿 GB2312 点阵字体，emoji 和生僻字不会显示。小月历的“休 / 班”角标取自 [Fusion Pixel Font](https://github.com/TakWolf/fusion-pixel-font)（OFL 1.1）。
 - 省电模式用的是浅睡眠（内存保留），不是深度睡眠；开发板上的电源灯和稳压芯片本身还要耗 1 mA 以上。
 - 局域网网页和接口没有密码，同一 WiFi 下的人都能查看画面、修改日历订阅。
