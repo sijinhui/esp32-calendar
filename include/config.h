@@ -43,6 +43,14 @@
 #ifndef ICS_SYNC_MINUTES
 #define ICS_SYNC_MINUTES 30  // 在线日历多久同步一次（省电模式下每次都要打开 WiFi）
 #endif
+// 夜间不自动同步：本地时间 [QUIET_START_HOUR, QUIET_END_HOUR) 点之间不联网（零点照样换日期重画），
+// 到 QUIET_END_HOUR 点再同步。两个值相同 = 不限制。网页 / 小程序里手动同步不受影响
+#ifndef QUIET_START_HOUR
+#define QUIET_START_HOUR 0
+#endif
+#ifndef QUIET_END_HOUR
+#define QUIET_END_HOUR 7
+#endif
 #define SYNC_FAIL_SHOW_AFTER 3  // 连续失败几次才在屏幕上显示“WiFi 未连接 / 同步失败”（偶尔失败一次不值得刷一次三色屏）
 #define HTTP_CONNECT_TIMEOUT_MS 5000  // 每个请求：TCP 连接超时
 #define HTTP_TLS_TIMEOUT_S 10         //           HTTPS 握手超时（库默认 120 秒）
