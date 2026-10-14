@@ -78,7 +78,7 @@ jobs:
             code=$(curl -sS -L --max-time 120 -o mirror.bin -w '%{http_code}' \
               "${prefix}https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/firmware.bin" || true)
             echo "OK  $host 证书；下载最新固件 HTTP $code，$(stat -c %s mirror.bin 2>/dev/null || echo 0) 字节"
-            [ "$code" = 200 ] || echo "::warning::镜像 $prefix 下载失败（HTTP $code）"
+            [ "$code" = 200 ] || echo "::warning::镜像 $prefix 下载失败（HTTP $code）：$(head -c 300 mirror.bin | tr -d '\n')"
           done
       - name: 打包
         run: |
