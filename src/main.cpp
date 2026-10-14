@@ -19,6 +19,7 @@
 #include "EpdOutput.h"
 #include "Log.h"
 #include "Settings.h"
+#include "StatusLed.h"
 #include "WebPreview.h"
 #include "WifiManager.h"
 #include "config.h"
@@ -115,6 +116,7 @@ void render(bool toEpd) {
 void syncData() {
   int y, m, d;
   if (!today(y, m, d)) return;
+  led::setSyncing(true);
   for (int year : {y, y + 1}) net::loadHolidays(holidays, year, true);
 
   ics::LocalTime from, to;
@@ -123,6 +125,7 @@ void syncData() {
   lastSync = time(nullptr);
   syncedDay = cal::daysFromCivil(y, m, d);
   syncedOnline = wifi::connected();
+  led::setSyncing(false);
   LOGF("同步完成：日程 %u 条，可用内存 %u 字节", events.size(), ESP.getFreeHeap());
 }
 
@@ -202,6 +205,7 @@ void setup() {
   tzset();
   settings::begin();
   epd::begin();
+  led::begin();
   wifi::begin();  // 不阻塞：连上 WiFi 后在 loop() 里对时、同步
   render(false);  // 先在网页上显示“等待联网”；三色屏刷一次要十几秒，联网结果出来再刷
 
@@ -234,17 +238,26 @@ void loop() {
   web::loop();
   ble::loop();
   checkButton();
+  led::loop();
 
   static uint32_t lastCheck = 0;
   if (millis() - lastCheck < 1000) return;
   lastCheck = millis();
+
+  led::setProvisioning(wifi::provisioning());
+  static bool wasConnected = false;
+  if (wifi::connected() && !wasConnected) led::flashConnected();
+  wasConnected = wifi::connected();
 
   // 连上 WiFi 后对时（开机、配网完成，或者开机时没网）
   if (!net::timeValid() && wifi::connected()) {
     static uint32_t lastTry = 0;
     if (!lastTry || millis() - lastTry > 30000) {
       lastTry = millis();
-      if (net::syncTime(10000)) {
+      led::setSyncing(true);
+      const bool timeOk = net::syncTime(10000);
+      led::setSyncing(false);
+      if (timeOk) {
         syncData();
         render(true);
       }

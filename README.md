@@ -15,6 +15,7 @@ include/config.h           引脚、屏幕驱动、时区、同步间隔、配�
 include/secrets.h          可选：开发用的默认 WiFi / 日历（不提交到 git）
 src/main.cpp               主流程：联网 → 对时 → 同步 → 绘制 → 刷屏
 src/Settings.*             用户配置（WiFi、日历订阅），保存在 NVS
+src/StatusLed.*            板载 RGB 状态灯（同步中 / 配网 / 联网成功）
 src/WifiManager.*          WiFi 连接、断线重连、配网模式（热点 + 强制门户）
 src/BleControl.*           蓝牙通道（小程序配网），协议见头文件
 src/CalendarRenderer.*     画面排版（设备和电脑预览共用）
@@ -149,8 +150,19 @@ node tools/test_web_subscriptions.mjs
    |------|----------|------|
    | WS2818 RGB 灯（板载） | GPIO 48 | 单线串行协议，一颗灯珠，数据脚直接接 IO48；与上面墨水屏的接线不冲突，不用占用 |
 
-   > 这颗灯是单线可寻址 RGB 灯，不能当普通 LED 用 `digitalWrite` 点亮，要用 `neopixelWrite(48, r, g, b)`（Arduino-ESP32 自带）
-   > 或者 FastLED / Adafruit NeoPixel 等库驱动，颜色顺序一般按 GRB 处理。目前固件还没有用到它。
+   > 这颗灯是单线可寻址 RGB 灯，不能当普通 LED 用 `digitalWrite` 点亮，固件里用 `neopixelWrite()` 驱动（Arduino-ESP32 自带）。
+   > 引脚、亮度在 `config.h` 的 `RGB_LED_PIN` / `RGB_LED_BRIGHTNESS`（默认 10，范围 0~255）。
+   > 乐鑫官方 DevKitC-1 v1.0 的灯在 GPIO48，v1.1 在 GPIO38，板子不同请改 `RGB_LED_PIN`。
+
+   状态灯平时**熄灭**，只在下面几种情况亮（代码在 `src/StatusLed.*`）：
+
+   | 状态 | 颜色 |
+   |------|------|
+   | 同步中（对时 / 节假日 / 日历） | 蓝 |
+   | 配网模式（首次开机、连不上 WiFi、长按 BOOT） | 橙，直到配网结束 |
+   | 联网成功 | 绿，亮 3 秒后熄灭 |
+
+   同时满足多个状态时，按上表顺序优先显示。
 
 2. `include/config.h` 里把 `EPD_ENABLED` 改成 `1`。
 3. 驱动已按屏幕 IC（UC8176）设为 `GxEPD2_420c`，不用改。刷不出来时先查接线，串口出现 `Busy Timeout` 先检查 BUSY 线。

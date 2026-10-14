@@ -46,6 +46,13 @@
 
 #define HOSTNAME "epaper-calendar"  // 局域网访问 http://epaper-calendar.local/
 
+// ===================== 状态灯 =====================
+// 板载 WS2818 RGB 灯，平时熄灭，只在同步中 / 配网中 / 联网成功时亮（见 src/StatusLed.h）
+// 乐鑫 ESP32-S3-DevKitC-1 v1.0 接 GPIO48，v1.1 接 GPIO38；板子不同请改这里
+#define RGB_LED_PIN 48
+#define RGB_LED_BRIGHTNESS 10  // 0~255
+#define RGB_LED_DONE_MS 3000   // 联网成功后绿灯亮多久
+
 // ===================== 配网 =====================
 // 进入配网模式后，设备开热点 EPaper-XXXX，同时蓝牙接受微信小程序的配置
 #define BUTTON_PIN 0                // 开发板上的 BOOT 键：长按进入配网模式
