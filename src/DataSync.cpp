@@ -4,8 +4,12 @@
 #include <LittleFS.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <WiFiUdp.h>
+#include <esp_timer.h>
+#include <sys/time.h>
 #include <time.h>
 
+#include <algorithm>
 #include <memory>
 
 #include "Log.h"
@@ -16,6 +20,8 @@
 namespace net {
 
 namespace {
+
+constexpr uint16_t kNtpLocalPort = 4123;
 
 // 把 HTTP 响应体直接喂给 iCal 解析器（边下边解析，不占用大块内存）
 class ParserSink : public Stream {
@@ -55,6 +61,7 @@ int httpGet(String url, Stream* sink, String* body, std::string& error) {
     if (url.startsWith("https://")) {
       auto* secure = new WiFiClientSecure;
       secure->setInsecure();  // 不校验证书：省去维护根证书的麻烦，数据是只读的日历，风险可接受
+      secure->setHandshakeTimeout(HTTP_TLS_TIMEOUT_S);
       client.reset(secure);
     } else {
       client.reset(new WiFiClient);
@@ -62,7 +69,8 @@ int httpGet(String url, Stream* sink, String* body, std::string& error) {
 
     HTTPClient http;
     http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
-    http.setTimeout(20000);
+    http.setConnectTimeout(HTTP_CONNECT_TIMEOUT_MS);
+    http.setTimeout(HTTP_READ_TIMEOUT_MS);
     http.setUserAgent("esp32-epaper-calendar");
     if (!http.begin(*client, url)) {
       error = "URL 无效";
@@ -98,16 +106,65 @@ int httpGet(String url, Stream* sink, String* body, std::string& error) {
 
 // ---------- 时间 ----------
 
-bool syncTime(uint32_t timeoutMs) {
-  configTzTime(TZ_POSIX, NTP_SERVER_1, NTP_SERVER_2, NTP_SERVER_3);
-  tm t;
-  if (!getLocalTime(&t, timeoutMs)) {
-    LOGF("NTP 对时超时");
-    return false;
+namespace {
+
+// 向一个 NTP 服务器要时间，成功时把系统时间设好，返回校正量（毫秒）。
+// 不用系统自带的 SNTP：它每次启动都先随机等 0~5 秒再发请求，省电模式下每次联网都要对时，等不起
+bool queryNtp(const char* host, uint32_t timeoutMs, int64_t& driftMs) {
+  IPAddress ip;
+  if (!WiFi.hostByName(host, ip)) return false;
+  WiFiUDP udp;
+  if (!udp.begin(kNtpLocalPort)) return false;
+  uint8_t pkt[48] = {0x23};  // LI = 0，版本 4，模式 3（客户端）
+  const int64_t sentUs = esp_timer_get_time();
+  udp.beginPacket(ip, 123);
+  udp.write(pkt, sizeof pkt);
+  udp.endPacket();
+  while (esp_timer_get_time() - sentUs < timeoutMs * 1000LL) {
+    if (udp.parsePacket() >= static_cast<int>(sizeof pkt) && udp.read(pkt, sizeof pkt) == sizeof pkt) {
+      const int64_t rttUs = esp_timer_get_time() - sentUs;
+      if ((pkt[0] & 7) != 4 || pkt[1] == 0) break;  // 不是服务器回复，或者服务器还没对上时（stratum 0）
+      auto be32 = [&](int at) {
+        return static_cast<uint32_t>(pkt[at]) << 24 | pkt[at + 1] << 16 | pkt[at + 2] << 8 | pkt[at + 3];
+      };
+      // 发送时间戳：1900 年起的秒数 + 2^-32 秒的小数；加上半个往返时间作为现在的时间
+      const int64_t serverUs = (static_cast<int64_t>(be32(40)) - 2208988800LL) * 1000000LL +
+                               ((static_cast<uint64_t>(be32(44)) * 1000000ULL) >> 32) + rttUs / 2;
+      timeval now;
+      gettimeofday(&now, nullptr);
+      driftMs = (serverUs - (now.tv_sec * 1000000LL + now.tv_usec)) / 1000;
+      const timeval tv{static_cast<time_t>(serverUs / 1000000), static_cast<suseconds_t>(serverUs % 1000000)};
+      settimeofday(&tv, nullptr);
+      udp.stop();
+      return true;
+    }
+    delay(5);
   }
-  LOGF("NTP 对时成功：%04d-%02d-%02d %02d:%02d:%02d", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour,
-       t.tm_min, t.tm_sec);
-  return true;
+  udp.stop();
+  return false;
+}
+
+}  // namespace
+
+bool syncTime(uint32_t timeoutMs) {
+  const bool wasValid = timeValid();
+  const uint32_t t0 = millis();
+  for (const char* host : {NTP_SERVER_1, NTP_SERVER_2, NTP_SERVER_3}) {
+    const uint32_t spent = millis() - t0;
+    if (spent >= timeoutMs) break;
+    int64_t driftMs = 0;
+    if (!queryNtp(host, std::min<uint32_t>(1500, timeoutMs - spent), driftMs)) continue;
+    const time_t now = time(nullptr);
+    tm t;
+    localtime_r(&now, &t);
+    // 校正量：浅睡眠期间时钟走得准不准
+    LOGF("NTP 对时成功（%s，用时 %lu ms）：%04d-%02d-%02d %02d:%02d:%02d%s", host, millis() - t0, t.tm_year + 1900,
+         t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec,
+         wasValid ? ("，校正 " + std::to_string(driftMs) + " ms").c_str() : "");
+    return true;
+  }
+  LOGF("NTP 对时失败");
+  return false;
 }
 
 bool timeValid() { return time(nullptr) > 1700000000; }  // 2023 年之后才算对过时

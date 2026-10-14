@@ -1,13 +1,18 @@
 // WiFi 管理：连接路由器、断线重连，以及配网模式（设备开热点 + 强制门户，同时蓝牙接受配置）
 //
+// 省电模式（DEBUG_MODE=0）下 WiFi 平时关闭，只在这些时候打开：开机后 / 短按 BOOT 键后 / 配网成功后的
+// WIFI_WINDOW_S 秒（openWindow），同步数据时（holdForSync），配网模式下。开发模式下一直联网。
+//
 // 什么时候进入配网模式：
 //   - 还没配置过 WiFi
-//   - 已保存的 WiFi 连不上超过 WIFI_PROVISION_AFTER_S 秒（期间继续定期重试，连上后自动退出）
 //   - 长按 BOOT 键（手动，持续 10 分钟或配网成功为止）
+//   - 仅开发模式：已保存的 WiFi 连不上超过 WIFI_PROVISION_AFTER_S 秒（期间继续定期重试，连上后自动退出）。
+//     省电模式下连不上就等下次同步再试，不自动开热点
 #pragma once
 
 #include <Arduino.h>
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -19,6 +24,12 @@ void loop();   // 放在主循环里
 bool configured();  // 是否保存过 WiFi
 bool connected();
 std::string ip();
+
+void openWindow(uint32_t ms);  // 至少保持联网 ms 毫秒（可以叠加，取最晚的）
+void holdForSync(bool hold);   // 同步数据期间保持联网
+bool radioOn();                // WiFi 射频是否打开（关着的时候主程序可以睡眠）
+// WiFi 打开后 / 关闭前回调（true = 已打开，false = 马上关闭）：关闭前必须关掉所有网络连接
+void onPower(const std::function<void(bool on)>& hook);
 
 void startProvisioning(bool manual);
 bool provisioning();

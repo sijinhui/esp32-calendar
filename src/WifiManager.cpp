@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstring>
 
 #include "Log.h"
 #include "Settings.h"
@@ -18,6 +19,7 @@ constexpr uint32_t kTryTimeoutMs = 15000;         // 新 WiFi 多久连不上算
 constexpr uint32_t kRetryMs = 15000;              // 断线后的重连间隔
 constexpr uint32_t kRetryProvisioningMs = 60000;  // 配网模式下的重连间隔（重连要扫描信道，热点会短暂掉线）
 constexpr uint32_t kManualMs = 10 * 60 * 1000;    // 手动配网模式持续多久
+constexpr uint32_t kFastTimeoutMs = 4000;         // 快速重连多久没连上就改为完整扫描
 
 DNSServer dns;
 std::string name;
@@ -26,6 +28,18 @@ bool manual = false;
 uint32_t apHoldUntil = 0;  // 这之前即使连上了路由器也不关热点（手动配网时用）
 uint32_t upSince = 0, downSince = 0, lastBegin = 0;
 bool wasUp = false;
+
+// 省电模式：WiFi 只在有人需要时打开
+bool powered = false;       // WiFi 射频是否打开
+std::function<void(bool)> powerHook;
+uint32_t windowUntil = 0;   // 这之前保持联网（开机后、短按 BOOT 键、配网成功后），网页 / 小程序可以访问
+bool syncHold = false;      // 主程序要同步数据
+
+// 快速重连：记住上次连上的路由器（BSSID）和信道，下次直接连，省掉扫描全部信道的一两秒
+String fastSsid;
+uint8_t fastBssid[6];
+int32_t fastChannel = 0;
+bool fastBegin = false;     // 这次连接是不是快速重连
 
 bool trying = false;
 String trySsid, tryPassword;
@@ -61,8 +75,49 @@ std::string reasonText(uint8_t reason) {
 void beginStation(const String& ssid, const String& password) {
   WiFi.disconnect();
   disconnectReason = 0;
-  WiFi.begin(ssid.c_str(), password.c_str());
+  fastBegin = fastChannel > 0 && ssid == fastSsid;
+  if (fastBegin) {
+    WiFi.begin(ssid.c_str(), password.c_str(), fastChannel, fastBssid);
+  } else {
+    WiFi.begin(ssid.c_str(), password.c_str());
+  }
   lastBegin = millis();
+}
+
+// 重新开始连接：正在试新 WiFi 就连新的，否则连保存的
+void restartStation() {
+  if (trying) {
+    beginStation(trySsid, tryPassword);
+  } else if (configured()) {
+    beginStation(settings::wifiSsid(), settings::wifiPassword());
+  }
+}
+
+bool wanted(uint32_t now) {
+  return DEBUG_MODE || apOn || trying || syncHold || static_cast<int32_t>(windowUntil - now) > 0;
+}
+
+void powerOn() {
+  powered = true;
+  WiFi.mode(apOn ? WIFI_AP_STA : WIFI_STA);
+  if (powerHook) powerHook(true);
+  downSince = millis();
+  restartStation();
+}
+
+// 关掉射频并释放 WiFi 驱动（下次 powerOn 时重新初始化，大约 0.1 秒）。
+// 驱动释放后，协议栈里还没处理完的数据包（比如刚建立的网页连接）再被释放就会崩溃，
+// 所以先让主程序关掉网页服务等所有连接，再等协议栈处理完已经收到的包。
+// （只用 esp_wifi_stop() 停射频、保留驱动也不行：实测之后浅睡眠醒不过来）
+void powerOff() {
+  if (powerHook) powerHook(false);
+  WiFi.disconnect();
+  delay(100);
+  WiFi.mode(WIFI_OFF);
+  powered = false;
+  wasUp = false;
+  fastBegin = false;
+  LOGF("WiFi 已关闭（省电）");
 }
 
 void stopProvisioning() {
@@ -127,6 +182,7 @@ void begin() {
   WiFi.onEvent([](arduino_event_id_t, arduino_event_info_t) { gotIpCount++; }, ARDUINO_EVENT_WIFI_STA_GOT_IP);
   WiFi.setHostname(HOSTNAME);
   WiFi.mode(WIFI_STA);
+  powered = true;
 
   uint8_t mac[6];
   WiFi.macAddress(mac);
@@ -146,6 +202,12 @@ void begin() {
 
 void loop() {
   const uint32_t now = millis();
+  if (wanted(now) != powered) {
+    // 打开后直接返回：powerOn() 刚把 lastBegin 设成比 now 晚的时间，这一轮再算 now - lastBegin 会下溢
+    return powered ? powerOff() : powerOn();
+  }
+  if (!powered) return;
+
   if (apOn) dns.processNextRequest();
   pollScan(now);
 
@@ -154,12 +216,25 @@ void loop() {
     wasUp = up;
     if (up) {
       upSince = now;
-      LOGF("WiFi 已连接「%s」：IP %s，MAC %s，信号 %d dBm", WiFi.SSID().c_str(),
-           WiFi.localIP().toString().c_str(), WiFi.macAddress().c_str(), WiFi.RSSI());
+      fastSsid = WiFi.SSID();
+      fastChannel = WiFi.channel();
+      memcpy(fastBssid, WiFi.BSSID(), sizeof fastBssid);
+      LOGF("WiFi 已连接「%s」：IP %s，信号 %d dBm，信道 %d，用时 %lu ms%s", WiFi.SSID().c_str(),
+           WiFi.localIP().toString().c_str(), WiFi.RSSI(), fastChannel, now - lastBegin,
+           fastBegin ? "（快速重连）" : "");
+      fastBegin = false;
     } else {
       downSince = now;
       LOGF("WiFi 已断开");
     }
+  }
+
+  // 快速重连没成功（路由器换了信道、Mesh 换了节点等）：马上改为扫描全部信道
+  if (!up && fastBegin && (disconnectReason != 0 || now - lastBegin > kFastTimeoutMs)) {
+    LOGF("快速重连失败（%s），改为扫描信道", reasonText(disconnectReason).c_str());
+    fastChannel = 0;
+    restartStation();
+    return;  // 同上：lastBegin 刚更新，这一轮不再往下算
   }
 
   if (trying) {
@@ -168,6 +243,7 @@ void loop() {
       settings::setWifi(trySsid, tryPassword);
       last.state = AttemptState::kConnected;
       apHoldUntil = now;  // 配网成功，手动配网模式也可以结束了
+      openWindow(WIFI_WINDOW_S * 1000UL);  // 留时间在网页 / 小程序里设置日历
     } else if (now - tryStart > kTryTimeoutMs) {
       trying = false;
       last.state = AttemptState::kFailed;
@@ -194,15 +270,37 @@ void loop() {
 
   if (!configured()) return;  // 没有配置：一直保持配网模式
 
+#if DEBUG_MODE
+  // 常驻联网：连不上就自动打开配网热点
   if (!apOn && now - downSince > WIFI_PROVISION_AFTER_S * 1000UL) {
     LOGF("「%s」%d 秒没连上（%s）", settings::wifiSsid().c_str(), WIFI_PROVISION_AFTER_S, lastError().c_str());
     startProvisioning(false);
   }
+#else
+  // 省电模式：连不上不自动开热点（路由器断电时每次同步都开热点太费电），等下次同步再试；
+  // 手动配网 10 分钟内没完成就关掉热点
+  if (apOn && manual && static_cast<int32_t>(now - apHoldUntil) > 0 && WiFi.softAPgetStationNum() == 0) {
+    LOGF("手动配网超时，关闭热点");
+    stopProvisioning();
+    return;
+  }
+#endif
   if (apOn && WiFi.softAPgetStationNum() > 0) return;  // 有手机正在配网时不重连，免得热点掉线
   if (now - lastBegin > (apOn ? kRetryProvisioningMs : kRetryMs)) {
     beginStation(settings::wifiSsid(), settings::wifiPassword());
   }
 }
+
+void openWindow(uint32_t ms) {
+  const uint32_t until = millis() + ms;
+  if (static_cast<int32_t>(until - windowUntil) > 0) windowUntil = until;
+}
+
+void holdForSync(bool hold) { syncHold = hold; }
+
+void onPower(const std::function<void(bool)>& hook) { powerHook = hook; }
+
+bool radioOn() { return powered; }
 
 bool configured() { return !settings::wifiSsid().isEmpty(); }
 
@@ -217,7 +315,10 @@ void startProvisioning(bool isManual) {
   }
   if (apOn) return;
 
+  const bool wasOff = !powered;
   WiFi.mode(WIFI_AP_STA);
+  powered = true;
+  if (wasOff && powerHook) powerHook(true);
   WiFi.softAP(name.c_str(), strlen(AP_PASSWORD) ? AP_PASSWORD : nullptr);
   dns.setErrorReplyCode(DNSReplyCode::NoError);
   dns.start(53, "*", WiFi.softAPIP());  // 所有域名都解析到设备，手机连上热点后会自动弹出设置页

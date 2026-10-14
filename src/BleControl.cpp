@@ -20,6 +20,7 @@ constexpr const char* kRxUuid = "9b6d0002-3c1a-4f7e-a1d2-5e8c7b4a2f10";
 constexpr const char* kTxUuid = "9b6d0003-3c1a-4f7e-a1d2-5e8c7b4a2f10";
 constexpr size_t kMaxLine = 4096;
 constexpr const char* kNeedProvisioning = "设备不在配网模式：请长按设备上的 BOOT 键 3 秒";
+constexpr uint32_t kLingerMs = 60000;  // 配网结束后手机还连着蓝牙的话，最多再保留多久
 
 Hooks hooks;
 std::string deviceName;
@@ -36,6 +37,8 @@ bool authorized = false;
 // 只在主循环里用
 bool waitScan = false, waitWifi = false;
 std::string advMfg;
+uint32_t neededAt = 0;    // 最近一次需要蓝牙（配网模式）的时间
+uint32_t lastAdvAt = 0;   // 上次检查广播内容的时间
 
 class ServerCallbacks : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer*, ble_gap_conn_desc* desc) override {
@@ -67,6 +70,15 @@ class RxCallbacks : public NimBLECharacteristicCallbacks {
     }
   }
 };
+
+// 蓝牙会反复打开 / 关闭，回调对象用静态的，不交给 NimBLE 释放
+ServerCallbacks serverCallbacks;
+RxCallbacks rxCallbacks;
+
+bool peerConnected() {
+  std::lock_guard<std::mutex> lock(mu);
+  return connHandle != BLE_HS_CONN_HANDLE_NONE;
+}
 
 void send(const JsonDocument& doc) {
   uint16_t handle;
@@ -165,13 +177,41 @@ void updateAdvertising() {
   if (advertising) a->stop();
   a->setAdvertisementData(adv);
   a->setScanResponseData(rsp);
-  bool connected;
+  // 有手机连着时不广播（断开后 NimBLE 会自动恢复广播，用的就是这里设置的内容）
+  if (advertising || !peerConnected()) a->start();
+}
+
+void start() {
+  NimBLEDevice::init(deviceName);
+  server = NimBLEDevice::createServer();
+  server->setCallbacks(&serverCallbacks, false);
+  NimBLEService* service = server->createService(kServiceUuid);
+  NimBLECharacteristic* rx =
+      service->createCharacteristic(kRxUuid, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
+  rx->setCallbacks(&rxCallbacks);
+  tx = service->createCharacteristic(kTxUuid, NIMBLE_PROPERTY::NOTIFY);
+  service->start();
+  advMfg.clear();
+  updateAdvertising();
+  lastAdvAt = millis();
+  LOGF("蓝牙已打开：%s，可用内存 %u 字节", deviceName.c_str(), ESP.getFreeHeap());
+}
+
+// 关闭协议栈和射频控制器，释放内存（NimBLE 的服务器、广播对象一并删除）
+void stop() {
+  NimBLEDevice::deinit(true);
+  server = nullptr;
+  tx = nullptr;
   {
     std::lock_guard<std::mutex> lock(mu);
-    connected = connHandle != BLE_HS_CONN_HANDLE_NONE;
+    connHandle = BLE_HS_CONN_HANDLE_NONE;
+    authorized = false;
+    rxBuf.clear();
+    commands.clear();
   }
-  // 有手机连着时不广播（断开后 NimBLE 会自动恢复广播，用的就是这里设置的内容）
-  if (advertising || !connected) a->start();
+  waitScan = waitWifi = false;
+  advMfg.clear();
+  LOGF("蓝牙已关闭，可用内存 %u 字节", ESP.getFreeHeap());
 }
 
 }  // namespace
@@ -179,20 +219,19 @@ void updateAdvertising() {
 void begin(const std::string& name, const Hooks& h) {
   hooks = h;
   deviceName = name;
-  NimBLEDevice::init(name);
-  server = NimBLEDevice::createServer();
-  server->setCallbacks(new ServerCallbacks);
-  NimBLEService* service = server->createService(kServiceUuid);
-  NimBLECharacteristic* rx =
-      service->createCharacteristic(kRxUuid, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
-  rx->setCallbacks(new RxCallbacks);
-  tx = service->createCharacteristic(kTxUuid, NIMBLE_PROPERTY::NOTIFY);
-  service->start();
-  updateAdvertising();
-  LOGF("蓝牙已启动：%s", name.c_str());
 }
 
+bool active() { return server != nullptr; }
+
 void loop() {
+  // 蓝牙只在配网模式下打开；配网结束后等手机断开（最多 kLingerMs）再关
+  const uint32_t now = millis();
+  if (wifi::provisioning()) {
+    neededAt = now;
+    if (!server) start();
+  } else if (server && (!peerConnected() || now - neededAt > kLingerMs)) {
+    stop();
+  }
   if (!server) return;
 
   std::deque<std::string> pending;
@@ -230,7 +269,10 @@ void loop() {
     send(doc);
   }
 
-  updateAdvertising();
+  if (now - lastAdvAt >= 1000) {
+    lastAdvAt = now;
+    updateAdvertising();
+  }
 }
 
 }  // namespace ble
