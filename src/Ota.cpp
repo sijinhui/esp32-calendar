@@ -7,7 +7,6 @@
 #include <WiFiClientSecure.h>
 
 #include "Log.h"
-#include "OtaRootCAs.h"
 #include "WifiManager.h"
 #include "config.h"
 
@@ -33,12 +32,13 @@ struct Latest {
 bool open(const std::string& githubUrl, WiFiClientSecure& client, HTTPClient& http, std::string& error) {
   for (const char* prefix : kSources) {
     const std::string url = prefix + githubUrl;
-    client.setCACert(kOtaRootCAs);
+    // 不校验证书（跟日历下载一样，省去维护根证书）；固件完整性靠 latest.json 里的大小和 MD5
+    client.setInsecure();
     client.setHandshakeTimeout(HTTP_TLS_TIMEOUT_S);
     http.setConnectTimeout(HTTP_CONNECT_TIMEOUT_MS);
     http.setTimeout(HTTP_READ_TIMEOUT_MS);
     http.setUserAgent("esp32-epaper-calendar");
-    // GitHub 的下载地址会跳转到文件服务器（同样是 https，根证书也在列表里）
+    // GitHub 的下载地址会跳转到文件服务器
     http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
     if (!http.begin(client, url.c_str())) {
       error = "URL 无效";

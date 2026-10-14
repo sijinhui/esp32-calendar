@@ -146,7 +146,6 @@ node tools/test_web_subscriptions.mjs
 - 国内直连 GitHub 慢，下载走镜像 `cdn.gh-proxy.org`、`proxy.xiaosi.cc`，各试一次，都不行就等第二天再查（不直连 GitHub）；
   在 `config.h` 的 `OTA_MIRRORS` 里改。检查或下载失败时设备继续用当前固件。
   镜像能看到并改动下载内容，用镜像就等于信任镜像。
-- 下载时校验 HTTPS 证书（根证书在 `src/OtaRootCAs.h`，CI 每次构建都会检查 GitHub 和镜像的证书，并试着通过镜像下载）。
 - 草稿和预发布（pre-release）的 Release 不会被设备下载，可以先用来测试。
 - 不想自动升级：`config.h` 里 `OTA_ENABLED` 改成 0。
 
@@ -215,7 +214,8 @@ node tools/test_web_subscriptions.mjs
 
 - iCal 里带 TZID 的时间都按本地时间处理（日历和设备在同一时区时没问题）。
 - 不支持的重复规则（BYSETPOS、每月多个 BYDAY 等）只显示第一次，串口日志里会提示。
-- 日历和节假日下载不校验 HTTPS 证书（`setInsecure`），省去维护根证书；在线升级会校验。
+- 日历、节假日和在线升级下载都不校验 HTTPS 证书（`setInsecure`），省去维护根证书；固件只按大小和 MD5 校验完整性，
+  防不了镜像或中间人冒充推送固件。
 - 新固件开机就崩溃的话不会自动退回旧版本，需要用 USB 重新烧录。
 - 字体是文泉驿 GB2312 点阵字体，emoji 和生僻字不会显示。小月历的“休 / 班”角标取自 [Fusion Pixel Font](https://github.com/TakWolf/fusion-pixel-font)（OFL 1.1）。
 - 省电模式用的是浅睡眠（内存保留），不是深度睡眠；开发板上的电源灯和稳压芯片本身还要耗 1 mA 以上。
