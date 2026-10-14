@@ -7,10 +7,12 @@
 namespace led {
 namespace {
 
-bool syncing = false;
-bool provisioning = false;
-bool flashPending = false;  // 联网成功后要闪绿灯，但还没轮到显示（比如正在同步）
-uint32_t flashUntil = 0;    // 绿灯亮到什么时候（millis），0 = 没在亮
+// 只有 task() 会写灯，其他地方只改这几个标志
+volatile bool syncing = false;
+volatile bool provisioning = false;
+volatile bool flashPending = false;  // 联网成功后要亮绿灯，但还没轮到显示（比如正在同步）
+
+uint32_t doneUntil = 0;  // 绿灯亮到什么时候（millis），0 = 没在亮
 uint32_t shown = 0xFFFFFFFF;
 
 uint8_t scale(uint8_t v) { return (uint16_t(v) * RGB_LED_BRIGHTNESS + 127) / 255; }
@@ -23,44 +25,46 @@ void write(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 void refresh() {
+  const bool blinkOn = (millis() / RGB_LED_BLINK_MS) % 2 == 0;
   if (syncing) {
-    write(0, 0, 255);
+    if (blinkOn) write(0, 0, 255);
+    else write(0, 0, 0);
   } else if (provisioning) {
-    write(255, 100, 0);
+    if (blinkOn) write(255, 100, 0);
+    else write(0, 0, 0);
   } else {
     if (flashPending) {
       flashPending = false;
-      flashUntil = millis() + RGB_LED_DONE_MS;
-      if (!flashUntil) flashUntil = 1;
+      doneUntil = millis() + RGB_LED_DONE_MS;
+      if (!doneUntil) doneUntil = 1;
     }
-    if (flashUntil && int32_t(millis() - flashUntil) < 0) {
+    if (doneUntil && int32_t(millis() - doneUntil) < 0) {
       write(0, 255, 0);
     } else {
-      flashUntil = 0;
+      doneUntil = 0;
       write(0, 0, 0);
     }
   }
 }
 
+void task(void*) {
+  for (;;) {
+    refresh();
+    vTaskDelay(pdMS_TO_TICKS(50));
+  }
+}
+
 }  // namespace
 
-void begin() { refresh(); }
-
-void loop() { refresh(); }
-
-void setSyncing(bool on) {
-  syncing = on;
+void begin() {
   refresh();
+  xTaskCreate(task, "status_led", 3072, nullptr, 1, nullptr);
 }
 
-void setProvisioning(bool on) {
-  provisioning = on;
-  refresh();
-}
+void setSyncing(bool on) { syncing = on; }
 
-void flashConnected() {
-  flashPending = true;
-  refresh();
-}
+void setProvisioning(bool on) { provisioning = on; }
+
+void flashConnected() { flashPending = true; }
 
 }  // namespace led

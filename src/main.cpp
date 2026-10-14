@@ -238,7 +238,6 @@ void loop() {
   web::loop();
   ble::loop();
   checkButton();
-  led::loop();
 
   static uint32_t lastCheck = 0;
   if (millis() - lastCheck < 1000) return;
