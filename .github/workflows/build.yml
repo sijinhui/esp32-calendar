@@ -1,0 +1,78 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-native-${{ hashFiles('platformio.ini') }}
+      - run: pip install platformio
+      - name: 单元测试（农历 / 节假日 / iCal / 订阅文本）
+        run: pio test -e native
+      - name: 网页订阅脚本回归测试
+        run: node tools/test_web_subscriptions.mjs
+
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-esp32s3-${{ hashFiles('platformio.ini') }}
+      - run: pip install platformio
+      - name: 编译固件
+        run: pio run -e esp32s3
+      - name: 打包
+        run: |
+          B=.pio/build/esp32s3
+          mkdir -p dist
+          cp $B/firmware.bin $B/bootloader.bin $B/partitions.bin $B/firmware.elf dist/
+          # 合并成一个从 0x0 开始烧录的完整镜像，不装 PlatformIO 也能用 esptool / 网页烧录工具烧
+          BOOT_APP0=$(find ~/.platformio/packages/framework-arduinoespressif32 -name boot_app0.bin | head -n1)
+          python ~/.platformio/packages/tool-esptoolpy/esptool.py --chip esp32s3 merge_bin \
+            -o dist/firmware-merged.bin --flash_mode keep --flash_freq keep --flash_size 16MB \
+            0x0 $B/bootloader.bin 0x8000 $B/partitions.bin 0xe000 "$BOOT_APP0" 0x10000 $B/firmware.bin
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-esp32s3-${{ github.sha }}
+          path: dist/
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, firmware]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware-esp32s3-${{ github.sha }}
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
