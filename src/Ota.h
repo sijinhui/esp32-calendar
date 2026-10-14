@@ -1,6 +1,6 @@
 // 在线升级：从 GitHub Release 下载 CI 编译好的固件（firmware.bin）写到另一个 app 分区，重启后生效
 //   有新版本 = 最新 Release 的 latest.json 里的版本跟本机固件版本（FW_VERSION，CI 用 tag 名编译进去）不同
-//   下载先走国内镜像（OTA_MIRRORS），都失败再直连 GitHub；写入前校验大小和 MD5
+//   下载走国内镜像（OTA_MIRRORS），各试一次；写入后校验大小和 MD5，失败时继续用当前固件
 //   自己编译的固件版本是 dev，不自动升级（免得被 Release 覆盖），网页上点“检查更新”可以手动升级
 #pragma once
 

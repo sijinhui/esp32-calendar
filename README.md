@@ -143,7 +143,8 @@ node tools/test_web_subscriptions.mjs
 
 - 第一次要用 USB 烧一个 Release 里的固件（`firmware-merged.bin` 从 0x0 烧），之后就能自动升级。
 - 自己用 `pio run` 编译的固件版本是 `dev`，不会自动升级（免得开发中的固件被覆盖），点“检查更新”可以手动升级。
-- 国内直连 GitHub 慢，默认先走镜像 `cdn.gh-proxy.org`、`proxy.xiaosi.cc`，都不行再直连；在 `config.h` 的 `OTA_MIRRORS` 里改。
+- 国内直连 GitHub 慢，下载走镜像 `cdn.gh-proxy.org`、`proxy.xiaosi.cc`，各试一次，都不行就等第二天再查（不直连 GitHub）；
+  在 `config.h` 的 `OTA_MIRRORS` 里改。检查或下载失败时设备继续用当前固件。
   镜像能看到并改动下载内容，用镜像就等于信任镜像。
 - 下载时校验 HTTPS 证书（根证书在 `src/OtaRootCAs.h`，CI 每次构建都会检查 GitHub 和镜像的证书，并试着通过镜像下载）。
 - 草稿和预发布（pre-release）的 Release 不会被设备下载，可以先用来测试。

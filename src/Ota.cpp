@@ -19,8 +19,9 @@ constexpr const char* kPrefs = "ota";
 // 上次装好的 tag：重启后版本号还不是它（比如 CI 没把版本号编译进去），就不再自动重复安装，免得每天都刷一遍
 constexpr const char* kTriedKey = "tried";
 
-// 下载来源：先走镜像（国内直连 GitHub 经常很慢或连不上），都不行再直连。"" = 直连
-const char* const kSources[] = {OTA_MIRRORS ""};
+// 下载来源：按顺序各试一次，都不行就算了，明天再查（国内直连 GitHub 经常很慢或连不上，不浪费时间去试）。
+// 失败不影响当前固件：新固件完整写入并校验通过后才切换启动分区
+const char* const kSources[] = {OTA_MIRRORS};
 
 struct Latest {
   std::string version;

@@ -60,7 +60,8 @@
 #define OTA_REPO "sijinhui/esp32-calendar"  // 从哪个仓库的 Release 下载
 #define OTA_ASSET "firmware.bin"            // Release 里的固件文件名（CI 自动上传）
 // 国内 GitHub 镜像（加速下载）：地址前缀，后面直接拼 https://github.com/... 的完整地址。
-// 按顺序尝试，都失败再直连 GitHub。每项后面都要有逗号；不需要镜像就留空：#define OTA_MIRRORS
+// 按顺序各试一次，都失败就等明天再查（不再直连 GitHub）。每项后面都要有逗号；"" 表示直连 GitHub，
+// 比如不用镜像：#define OTA_MIRRORS "",
 #ifndef OTA_MIRRORS
 #define OTA_MIRRORS "https://cdn.gh-proxy.org/", "https://proxy.xiaosi.cc/",
 #endif
