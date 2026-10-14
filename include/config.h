@@ -47,11 +47,11 @@
 #define HOSTNAME "epaper-calendar"  // 局域网访问 http://epaper-calendar.local/
 
 // ===================== 状态灯 =====================
-// 板载 WS2818 RGB 灯，平时熄灭，只在同步中 / 配网中 / 联网成功时亮（见 src/StatusLed.h）
+// 板载 WS2818 RGB 灯，平时熄灭，只在同步中 / 同步结果 / 配网中亮（见 src/StatusLed.h）
 // 乐鑫 ESP32-S3-DevKitC-1 v1.0 接 GPIO48，v1.1 接 GPIO38；板子不同请改这里
 #define RGB_LED_PIN 48
 #define RGB_LED_BRIGHTNESS 10  // 0~255
-#define RGB_LED_DONE_MS 3000   // 联网成功后绿灯亮多久
+#define RGB_LED_DONE_MS 3000   // 同步成功（绿）/ 失败（红）后灯亮多久
 #define RGB_LED_BLINK_MS 500   // 慢闪：亮 / 灭各多久（同步中、配网）
 
 // ===================== 配网 =====================

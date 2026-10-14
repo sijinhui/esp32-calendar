@@ -126,6 +126,7 @@ void syncData() {
   syncedDay = cal::daysFromCivil(y, m, d);
   syncedOnline = wifi::connected();
   led::setSyncing(false);
+  led::showResult(icsResult.error.empty());
   LOGF("同步完成：日程 %u 条，可用内存 %u 字节", events.size(), ESP.getFreeHeap());
 }
 
@@ -244,9 +245,6 @@ void loop() {
   lastCheck = millis();
 
   led::setProvisioning(wifi::provisioning());
-  static bool wasConnected = false;
-  if (wifi::connected() && !wasConnected) led::flashConnected();
-  wasConnected = wifi::connected();
 
   // 连上 WiFi 后对时（开机、配网完成，或者开机时没网）
   if (!net::timeValid() && wifi::connected()) {
@@ -256,6 +254,7 @@ void loop() {
       led::setSyncing(true);
       const bool timeOk = net::syncTime(10000);
       led::setSyncing(false);
+      if (!timeOk) led::showResult(false);
       if (timeOk) {
         syncData();
         render(true);

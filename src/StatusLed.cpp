@@ -10,9 +10,11 @@ namespace {
 // 只有 task() 会写灯，其他地方只改这几个标志
 volatile bool syncing = false;
 volatile bool provisioning = false;
-volatile bool flashPending = false;  // 联网成功后要亮绿灯，但还没轮到显示（比如正在同步）
+volatile bool resultPending = false;  // 同步结果还没轮到显示（比如又开始同步了）
+volatile bool resultOk = false;
 
-uint32_t doneUntil = 0;  // 绿灯亮到什么时候（millis），0 = 没在亮
+uint32_t doneUntil = 0;  // 结果灯亮到什么时候（millis），0 = 没在亮
+bool doneOk = false;
 uint32_t shown = 0xFFFFFFFF;
 
 uint8_t scale(uint8_t v) { return (uint16_t(v) * RGB_LED_BRIGHTNESS + 127) / 255; }
@@ -29,21 +31,24 @@ void refresh() {
   if (syncing) {
     if (blinkOn) write(0, 0, 255);
     else write(0, 0, 0);
+    return;
+  }
+  if (resultPending) {
+    resultPending = false;
+    doneOk = resultOk;
+    doneUntil = millis() + RGB_LED_DONE_MS;
+    if (!doneUntil) doneUntil = 1;
+  }
+  if (doneUntil && int32_t(millis() - doneUntil) < 0) {
+    if (doneOk) write(0, 255, 0);
+    else write(255, 0, 0);
   } else if (provisioning) {
+    doneUntil = 0;
     if (blinkOn) write(255, 100, 0);
     else write(0, 0, 0);
   } else {
-    if (flashPending) {
-      flashPending = false;
-      doneUntil = millis() + RGB_LED_DONE_MS;
-      if (!doneUntil) doneUntil = 1;
-    }
-    if (doneUntil && int32_t(millis() - doneUntil) < 0) {
-      write(0, 255, 0);
-    } else {
-      doneUntil = 0;
-      write(0, 0, 0);
-    }
+    doneUntil = 0;
+    write(0, 0, 0);
   }
 }
 
@@ -65,6 +70,9 @@ void setSyncing(bool on) { syncing = on; }
 
 void setProvisioning(bool on) { provisioning = on; }
 
-void flashConnected() { flashPending = true; }
+void showResult(bool ok) {
+  resultOk = ok;
+  resultPending = true;
+}
 
 }  // namespace led
