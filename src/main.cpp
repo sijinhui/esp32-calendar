@@ -277,6 +277,28 @@ void checkButton() {
   down = false;
 }
 
+// 夜间不同步的时段还剩几秒；0 = 不在这个时段（时段可以跨零点，比如 23 点到 7 点）
+int32_t quietSecondsLeft(const tm& t) {
+  if (QUIET_START_HOUR == QUIET_END_HOUR) return 0;
+  const int h = t.tm_hour;
+  const bool quiet = QUIET_START_HOUR < QUIET_END_HOUR ? h >= QUIET_START_HOUR && h < QUIET_END_HOUR
+                                                       : h >= QUIET_START_HOUR || h < QUIET_END_HOUR;
+  if (!quiet) return 0;
+  const int32_t secs = t.tm_hour * 3600 + t.tm_min * 60 + t.tm_sec;
+  int32_t left = QUIET_END_HOUR * 3600 - secs;
+  if (left <= 0) left += 24 * 3600;
+  return left;
+}
+
+// 现在是否该跳过自动同步：开机后同步过一次（内存里有数据可画），并且在夜间时段
+bool quietNow() {
+  if (syncedDay < 0 || !net::timeValid()) return false;
+  const time_t now = time(nullptr);
+  tm t;
+  localtime_r(&now, &t);
+  return quietSecondsLeft(t) > 0;
+}
+
 // 离下次同步（或重试对时）还有几秒；<= 0 表示该同步了
 int32_t secondsUntilSync() {
   if (!net::timeValid()) {
@@ -287,12 +309,14 @@ int32_t secondsUntilSync() {
   }
   int y, m, d;
   today(y, m, d);
-  if (cal::daysFromCivil(y, m, d) != syncedDay) return 0;  // 跨天
-  if (!syncedOnline && wifi::connected()) return 0;        // 上次没联网，现在连上了
   const time_t now = time(nullptr);
   tm t;
   localtime_r(&now, &t);
   const int32_t untilMidnight = 24 * 3600 - (t.tm_hour * 3600 + t.tm_min * 60 + t.tm_sec);
+  // 夜间不同步：睡到时段结束；时段跨零点时，零点还要醒来换日期（见 tick()）
+  if (quietNow()) return std::min(quietSecondsLeft(t), untilMidnight);
+  if (cal::daysFromCivil(y, m, d) != syncedDay) return 0;  // 跨天
+  if (!syncedOnline && wifi::connected()) return 0;        // 上次没联网，现在连上了
   const int32_t untilDue = static_cast<int32_t>(lastSync + ICS_SYNC_MINUTES * 60 - now);
   return std::min(untilDue, untilMidnight);
 }
@@ -347,6 +371,19 @@ void tick() {
   if (previewDay >= 0 && (millis() - previewSince > 10 * 60 * 1000 || !wifi::radioOn())) {
     previewDay = -1;
     render(true);
+  }
+
+  // 夜间不同步，但跨天了照样用内存里的数据换日期重画（不联网）
+  if (!syncing && quietNow()) {
+    static int32_t quietDrawnDay = -1;
+    int y, m, d;
+    today(y, m, d);
+    const int32_t day = cal::daysFromCivil(y, m, d);
+    if (day != syncedDay && day != quietDrawnDay) {
+      quietDrawnDay = day;
+      LOGF("夜间不同步，%02d 点后再同步；先换日期重画", QUIET_END_HOUR);
+      render(previewDay < 0);
+    }
   }
 
   if (!syncing && secondsUntilSync() <= 0) {

@@ -163,6 +163,8 @@ node tools/test_web_subscriptions.mjs
   - 程序崩溃过的话，下次开机日志里会打出“上次崩溃”的位置（`/api/status` 的 `last_crash` 也有），
     用 `xtensa-esp32s3-elf-addr2line -pfiaC -e .pio/build/esp32s3/firmware.elf <地址>` 解析。
 
+不管哪种模式，夜里 0 点到 7 点都不自动同步（零点照样换日期，只是不联网），7 点再同步；时段在 `config.h` 的 `QUIET_START_HOUR` / `QUIET_END_HOUR` 里改，两个值相同就不限制。网页 / 小程序里手动同步不受影响。
+
 不管哪种模式，平时 CPU 都跑 80MHz（同步时临时升到 240MHz），蓝牙只在配网时打开，节假日数据每天下载一次。
 
 ## 屏幕到货后
