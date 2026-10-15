@@ -49,7 +49,7 @@ jobs:
         env:
           TAG: ${{ github.event.release.tag_name }}
         run: |
-          # 版本号编译进固件：Release 用 tag 名（设备拿它跟最新 Release 比较），其余是 dev-<commit>（不自动升级）
+          # 版本号编译进固件：Release 用 tag 名（设备拿它跟最新 Release 比较），其余是 dev-<commit>
           if [ "${{ github.event_name }}" = release ]; then
             VERSION="$TAG"
           else

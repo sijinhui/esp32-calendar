@@ -73,7 +73,8 @@
 #ifndef OTA_MIRRORS
 #define OTA_MIRRORS "https://cdn.gh-proxy.org/", "https://proxy.xiaosi.cc/",
 #endif
-// 固件版本：CI 编译 Release 时设成 tag 名（如 v1.2.0）；自己编译的是 dev，不会自动升级
+// 固件版本：CI 编译 Release 时设成 tag 名（如 v1.2.0）；自己编译的用 git describe（如 v1.2.0-3-gabc1234，见 scripts/version.py），
+// 拿不到时是 dev。只有 Release 的版本号比它新才会升级
 #ifndef FW_VERSION
 #define FW_VERSION "dev"
 #endif

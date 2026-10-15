@@ -137,12 +137,14 @@ node tools/test_web_subscriptions.mjs
 
 1. 在 GitHub 上新建 Release（tag 用 `v1.0.0` 这样的版本号）并发布。
 2. Actions 自动编译固件，把版本号（tag 名）编译进去，几分钟后 `firmware.bin`、`latest.json` 等文件出现在这个 Release 里。
-3. 设备每天第一次同步时读最新 Release 的 `latest.json`，版本跟自己不同就下载 `firmware.bin`，校验大小和 MD5，
+3. 设备每天第一次同步时读最新 Release 的 `latest.json`，版本号比自己大就下载 `firmware.bin`，校验大小和 MD5，
    写到另一个固件分区后重启。
    网页上点“检查更新”可以立即升级；`/api/status` 里的 `version` 是当前版本。
 
 - 第一次要用 USB 烧一个 Release 里的固件（`firmware-merged.bin` 从 0x0 烧），之后就能自动升级。
-- 自己用 `pio run` 编译的固件版本是 `dev`，不会自动升级（免得开发中的固件被覆盖），点“检查更新”可以手动升级。
+- 自己用 `pio run` 编译的固件版本号是 `git describe` 的结果（如 `v1.0.2-3-gabc1234`），也会自动升级：
+  发了比它新的 Release（如 `v1.0.3`）就会被替换，同版本或更旧的 Release 不会覆盖它。
+  点“检查更新”时只要版本不同就装，可以用来把本地固件换回 Release。
 - 国内直连 GitHub 慢，下载走镜像 `cdn.gh-proxy.org`、`proxy.xiaosi.cc`，各试一次，都不行就等第二天再查（不直连 GitHub）；
   在 `config.h` 的 `OTA_MIRRORS` 里改。检查或下载失败时设备继续用当前固件。
   镜像能看到并改动下载内容，用镜像就等于信任镜像。

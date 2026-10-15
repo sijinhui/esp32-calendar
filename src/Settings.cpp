@@ -44,9 +44,12 @@ void begin() {
     password = prefs.getString("pass");
   }
 #if HAS_SECRETS
-  else {
+  else if (*WIFI_SSID) {
+    // 写进 NVS：之后 OTA 换成不带 secrets.h 的 Release 固件，WiFi 也还在
     ssid = WIFI_SSID;
     password = WIFI_PASSWORD;
+    prefs.putString("ssid", ssid);
+    prefs.putString("pass", password);
   }
 #endif
 
