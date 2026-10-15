@@ -157,8 +157,8 @@ node tools/test_web_subscriptions.mjs
 
 `include/config.h` 里的 `DEBUG_MODE`：
 
-- `1`（开发模式，现在的默认值）：WiFi 一直连着、不睡眠，串口日志不断，网页随时能打开。屏幕没到、要靠网页看画面时用这个。
-- `0`（省电模式）：WiFi 平时关闭，CPU 浅睡眠；到点（每 `ICS_SYNC_MINUTES` 分钟、以及零点）醒来，打开 WiFi 同步、对时，然后马上关掉。
+- `1`（开发模式）：WiFi 一直连着、不睡眠，串口日志不断，网页随时能打开。调试时、要靠网页看画面时用这个。
+- `0`（省电模式，现在的默认值）：WiFi 平时关闭，CPU 浅睡眠；到点（每 `ICS_SYNC_MINUTES` 分钟、以及零点）醒来，打开 WiFi 同步、对时，然后马上关掉。
   - 开机后、**短按 BOOT 键**后、配网成功后，WiFi 和网页保持打开 5 分钟（`WIFI_WINDOW_S`），这时才能用网页 / 小程序。
   - 同步时连不上 WiFi 就等下次再试，不会自动开配网热点；连续 3 次连不上，屏幕状态栏显示“WiFi 未连接”。
   - 睡眠时 USB 串口会断开：要烧录先短按 BOOT 键把设备叫醒，或者按住 BOOT 再按 RST 进下载模式。
@@ -173,17 +173,20 @@ node tools/test_web_subscriptions.mjs
 
 1. 接线（可在 `config.h` 里改）：
 
-   | 屏幕 | ESP32-S3 |
+   | 驱动板丝印 | ESP32-S3 |
    |------|----------|
-   | VCC  | 3V3 |
+   | BUSY | GPIO 4 |
+   | CS   | GPIO 5 |
+   | D/C（DC） | GPIO 6 |
+   | RES（RST） | GPIO 7 |
+   | SDI（DIN） | GPIO 15 |
+   | SCL（CLK） | GPIO 16 |
+   | 3.3V（VCC） | 3V3 |
    | GND  | GND |
-   | DIN  | GPIO 11 |
-   | CLK  | GPIO 12 |
-   | CS   | GPIO 10 |
-   | DC   | GPIO 9 |
-   | RST  | GPIO 8 |
-   | BUSY | GPIO 7 |
    | PWR（新款微雪模块才有） | 3V3 |
+
+   > 6 根信号线按驱动板上的顺序，正好对上 DevKitC 有 3V3 的那排排针第 4~9 位（4 5 6 7 15 16），用一排杜邦线按顺序插上就行；
+   > 3.3V、GND 单独接，别插到 5V 上。开发板排针上的 RST 是 ESP32 自己的复位脚，不是屏幕的 RES。
 
    开发板自带的 RGB 灯：
 
@@ -207,7 +210,9 @@ node tools/test_web_subscriptions.mjs
    同时满足多个状态时，按上表顺序优先显示。慢闪的亮 / 灭时长是 `RGB_LED_BLINK_MS`（默认各 0.5 秒）；
    灯由后台任务驱动，同步卡住主循环时也照常闪。省电模式下会等灯熄灭后再浅睡眠。
 
-2. `include/config.h` 里把 `EPD_ENABLED` 改成 `1`。调试完、要省电的话再把 `DEBUG_MODE` 改成 `0`（见上面“省电模式”）。
+2. `include/config.h` 里的 `EPD_ENABLED` 默认就是 `1`，接好直接烧录即可（没接屏幕时刷屏会等 BUSY 超时，最多卡住约 1 分钟；
+   只想用网页预览可以改成 `0`）。`DEBUG_MODE` 默认是 `0`（省电模式），调试时想要串口日志不断、网页随时能打开，
+   可以临时改成 `1`（见上面“省电模式”）。
 3. 驱动已按屏幕 IC（UC8176）设为 `GxEPD2_420c`，不用改。刷不出来时先查接线，串口出现 `Busy Timeout` 先检查 BUSY 线。
    以后换别的屏：UC8276 用 `GxEPD2_420c_Z21`，SSD1683 用 `GxEPD2_420c_GDEY042Z98`。
 4. 非微雪的转接板如果刷新异常，把 `EPD_RESET_MS` 改成 `10` 试试。

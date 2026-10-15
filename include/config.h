@@ -2,10 +2,11 @@
 #pragma once
 
 // ===================== 墨水屏 =====================
-// 屏幕还没到时保持 0：程序照常运行，画面在浏览器里预览（http://epaper-calendar.local/）
-// 接好屏幕后改成 1
+// 1 = 驱动墨水屏。网页预览（http://epaper-calendar.local/）不受影响，开不开都能看画面。
+// 没接屏幕时 BUSY 脚悬空，刷屏可能要等超时（串口打印 Busy Timeout!，最多卡住约 1 分钟），
+// 只用网页预览、不想等就改成 0。CI 编译的 Release 固件也用这个默认值，自动升级后照样驱动屏幕
 #ifndef EPD_ENABLED
-#define EPD_ENABLED 0
+#define EPD_ENABLED 1
 #endif
 
 // 4.2 寸三色（黑白红）400x300，驱动 IC：UC8176 → GxEPD2_420c（GDEW042Z15 / 微雪 4.2" B V1 同款）
@@ -17,13 +18,15 @@
 // 微雪（Waveshare）的驱动板 / HAT 复位电路比较特殊，需要 2ms 的短复位脉冲；其他转接板用 10
 #define EPD_RESET_MS 2
 
-// 接线（ESP32-S3 任意 GPIO 都可以，避开 0/3/45/46 启动引脚、19/20 USB、26~37 Flash/PSRAM）
-#define EPD_PIN_SCK 12
-#define EPD_PIN_MOSI 11  // 屏幕上标 DIN / SDA
-#define EPD_PIN_CS 10
-#define EPD_PIN_DC 9
-#define EPD_PIN_RST 8
-#define EPD_PIN_BUSY 7
+// 接线（ESP32-S3 任意 GPIO 都可以，避开 0/3/45/46 启动引脚、19/20 USB、26~37 Flash/PSRAM、43/44 串口日志、48 RGB 灯）
+// 按 8PIN 通用驱动板的丝印顺序（BUSY CS D/C RES SDI SCL）排：DevKitC 有 3V3 的那排排针第 4~9 位正好是
+// 4 5 6 7 15 16，6 根信号线用一排杜邦线按顺序插上就行；3.3V、GND 单独接（别插到 5V 上）
+#define EPD_PIN_BUSY 4
+#define EPD_PIN_CS 5
+#define EPD_PIN_DC 6     // 驱动板上标 D/C
+#define EPD_PIN_RST 7    // 驱动板上标 RES
+#define EPD_PIN_MOSI 15  // 驱动板上标 SDI（有的屏标 DIN / SDA）
+#define EPD_PIN_SCK 16   // 驱动板上标 SCL（有的屏标 CLK）
 
 #define SCREEN_W 400
 #define SCREEN_H 300
@@ -90,10 +93,10 @@
 // ===================== 功耗 =====================
 // 开发模式：1 = WiFi 一直连着、不睡眠（串口日志不断，网页随时能打开，跟以前一样）
 //           0 = 省电模式：WiFi 平时关闭、CPU 浅睡眠，到点醒来同步；短按 BOOT 键打开 WiFi 和网页 WIFI_WINDOW_S 秒
-// 屏幕还没到、要靠网页看画面时用 1；接好屏幕、调试完再改成 0。
+// 默认 0（Release 固件也是省电模式）；调试时要串口日志不断、网页随时能打开，就改成 1。
 // 注意：省电模式睡眠时 USB 串口会断开，要烧录先短按 BOOT 键把设备叫醒（或者按住 BOOT 再按 RST 进下载模式）
 #ifndef DEBUG_MODE
-#define DEBUG_MODE 1
+#define DEBUG_MODE 0
 #endif
 #ifndef WIFI_WINDOW_S
 #define WIFI_WINDOW_S 300  // 开机后 / 短按 BOOT 键后 / 配网成功后，WiFi 和网页保持打开多久
