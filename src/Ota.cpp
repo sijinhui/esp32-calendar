@@ -1,6 +1,12 @@
 #include "Ota.h"
 
+// 编译时生成的版本号（scripts/version.py），要在 config.h 之前
+#if __has_include("fw_version.h")
+#include "fw_version.h"
+#endif
+
 #include <ArduinoJson.h>
+#include <array>
 #include <HTTPClient.h>
 #include <Preferences.h>
 #include <Update.h>
@@ -90,6 +96,24 @@ bool fetchLatest(Latest& latest, std::string& error) {
   return true;
 }
 
+// 版本号开头的数字部分：v1.2.3-4-gabc → {1,2,3}；没有数字（如 dev）= {0,0,0}，比任何 Release 都旧
+std::array<int, 3> parseVersion(const std::string& v) {
+  std::array<int, 3> n{};
+  size_t i = (!v.empty() && (v[0] == 'v' || v[0] == 'V')) ? 1 : 0;
+  for (int& part : n) {
+    if (i >= v.size() || !isdigit(static_cast<unsigned char>(v[i]))) break;
+    while (i < v.size() && isdigit(static_cast<unsigned char>(v[i]))) part = part * 10 + (v[i++] - '0');
+    if (i >= v.size() || v[i] != '.') break;
+    i++;
+  }
+  return n;
+}
+
+// Release 比本机新才自动升级：本地编译的 v1.0.2-3-gabc 不会被 v1.0.2 覆盖，发了 v1.0.3 才升级
+bool newer(const std::string& latest, const std::string& current) {
+  return parseVersion(latest) > parseVersion(current);
+}
+
 bool download(const Latest& latest, std::string& error) {
   WiFiClientSecure client;
   HTTPClient http;
@@ -124,7 +148,7 @@ bool download(const Latest& latest, std::string& error) {
 
 const char* version() { return FW_VERSION; }
 
-bool autoUpdate() { return OTA_ENABLED && strncmp(FW_VERSION, "dev", 3) != 0; }
+bool autoUpdate() { return OTA_ENABLED; }
 
 Result checkAndUpdate(bool force) {
   Result r;
@@ -138,8 +162,9 @@ Result checkAndUpdate(bool force) {
     return r;
   }
   r.latest = latest.version;
-  if (r.latest == FW_VERSION) {
-    LOGF("固件已是最新版本 %s", FW_VERSION);
+  // 手动检查：只要版本不同就装（可以把本地编译的固件换回 Release）；自动检查：Release 更新才装
+  if (r.latest == FW_VERSION || (!force && !newer(r.latest, FW_VERSION))) {
+    LOGF("固件已是最新版本 %s（最新 Release %s）", FW_VERSION, r.latest.c_str());
     return r;
   }
 
