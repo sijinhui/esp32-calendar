@@ -175,17 +175,18 @@ node tools/test_web_subscriptions.mjs
 
    | 驱动板丝印 | ESP32-S3 |
    |------|----------|
-   | BUSY | GPIO 4 |
-   | CS   | GPIO 5 |
-   | D/C（DC） | GPIO 6 |
-   | RES（RST） | GPIO 7 |
-   | SDI（DIN） | GPIO 15 |
-   | SCL（CLK） | GPIO 16 |
+   | BUSY | GPIO 16 |
+   | CS   | GPIO 15 |
+   | D/C（DC） | GPIO 7 |
+   | RES（RST） | GPIO 6 |
+   | SDI（DIN） | GPIO 5 |
+   | SCL（CLK） | GPIO 4 |
    | 3.3V（VCC） | 3V3 |
    | GND  | GND |
    | PWR（新款微雪模块才有） | 3V3 |
 
-   > 6 根信号线按驱动板上的顺序，正好对上 DevKitC 有 3V3 的那排排针第 4~9 位（4 5 6 7 15 16），用一排杜邦线按顺序插上就行；
+   > 6 根信号线正好对上 DevKitC 有 3V3 的那排排针第 4~9 位（4 5 6 7 15 16），按驱动板上的顺序用一排杜邦线倒着插
+   > （BUSY 接 16 …… SCL 接 4）；
    > 3.3V、GND 单独接，别插到 5V 上。开发板排针上的 RST 是 ESP32 自己的复位脚，不是屏幕的 RES。
 
    开发板自带的 RGB 灯：
@@ -214,6 +215,9 @@ node tools/test_web_subscriptions.mjs
    只想用网页预览可以改成 `0`）。`DEBUG_MODE` 默认是 `0`（省电模式），调试时想要串口日志不断、网页随时能打开，
    可以临时改成 `1`（见上面“省电模式”）。
 3. 驱动已按屏幕 IC（UC8176）设为 `GxEPD2_420c`，不用改。刷不出来时先查接线，串口出现 `Busy Timeout` 先检查 BUSY 线。
+   串口提示“墨水屏没有真正刷新”或“读不到屏幕的 BUSY 信号”时，先检查屏幕排线：金色触点要正对插座里的金属弹片，
+   插到底并扣紧翻盖。还查不出来，编译时加 `-DEPD_PROBE`（`PLATFORMIO_BUILD_FLAGS="-DEPD_PROBE" pio run -t upload`），
+   开机会打印复位、BUSY 和寄存器的探测结果。
    以后换别的屏：UC8276 用 `GxEPD2_420c_Z21`，SSD1683 用 `GxEPD2_420c_GDEY042Z98`。
 4. 非微雪的转接板如果刷新异常，把 `EPD_RESET_MS` 改成 `10` 试试。
 

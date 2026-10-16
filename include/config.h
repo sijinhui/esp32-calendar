@@ -19,14 +19,14 @@
 #define EPD_RESET_MS 2
 
 // 接线（ESP32-S3 任意 GPIO 都可以，避开 0/3/45/46 启动引脚、19/20 USB、26~37 Flash/PSRAM、43/44 串口日志、48 RGB 灯）
-// 按 8PIN 通用驱动板的丝印顺序（BUSY CS D/C RES SDI SCL）排：DevKitC 有 3V3 的那排排针第 4~9 位正好是
-// 4 5 6 7 15 16，6 根信号线用一排杜邦线按顺序插上就行；3.3V、GND 单独接（别插到 5V 上）
-#define EPD_PIN_BUSY 4
-#define EPD_PIN_CS 5
-#define EPD_PIN_DC 6     // 驱动板上标 D/C
-#define EPD_PIN_RST 7    // 驱动板上标 RES
-#define EPD_PIN_MOSI 15  // 驱动板上标 SDI（有的屏标 DIN / SDA）
-#define EPD_PIN_SCK 16   // 驱动板上标 SCL（有的屏标 CLK）
+// 8PIN 通用驱动板的丝印顺序是 BUSY CS D/C RES SDI SCL；DevKitC 有 3V3 的那排排针第 4~9 位是 4 5 6 7 15 16，
+// 6 根信号线用一排杜邦线倒着插：BUSY 接 16、CS 接 15 …… SCL 接 4；3.3V、GND 单独接（别插到 5V 上）
+#define EPD_PIN_BUSY 16
+#define EPD_PIN_CS 15
+#define EPD_PIN_DC 7    // 驱动板上标 D/C
+#define EPD_PIN_RST 6   // 驱动板上标 RES
+#define EPD_PIN_MOSI 5  // 驱动板上标 SDI（有的屏标 DIN / SDA）
+#define EPD_PIN_SCK 4   // 驱动板上标 SCL（有的屏标 CLK）
 
 #define SCREEN_W 400
 #define SCREEN_H 300
