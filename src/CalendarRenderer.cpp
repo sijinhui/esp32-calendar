@@ -31,10 +31,16 @@ constexpr int kGridBottom = SCREEN_H - 1;
 constexpr int kMaxRowH = 44;
 constexpr int kAgendaX = kLeftW + 8;
 constexpr int kAgendaR = SCREEN_W - 6;
-// 日程标题的字体（比日期行大一号），以及每条日程的行高、基线到行底的距离
-const uint8_t* const kFontEvent = u8g2_font_wqy14_t_gb2312;
-constexpr int kEventH = 17;
-constexpr int kEventBase = 3;
+// 右栏日程的字体：日期行、时间、提示用 14px，日程标题再大一号用 16px
+const uint8_t* const kFontAgenda = u8g2_font_wqy14_t_gb2312;
+const uint8_t* const kFontEvent = u8g2_font_wqy16_t_gb2312;
+constexpr int kTimeW = 42;     // 左边时间列的宽度，日程标题从这里开始
+constexpr int kEventH = 20;    // 每条日程第一行的行高
+constexpr int kEventBase = 4;  // 基线到行底的距离
+// 标题太长时折行显示：续行的行距（比两条日程之间紧一点，看得出是同一条），以及最多几行（再多就末尾加“…”）
+constexpr int kEventWrapH = 17;
+constexpr int kEventMaxLines = 4;
+constexpr int kNoteH = 19;  // “没有日程”等提示的行高
 
 const char* const kWeekNames[] = {"日", "一", "二", "三", "四", "五", "六"};
 
@@ -79,6 +85,47 @@ std::string fit(std::string s, int maxW, bool ellipsis = false) {
   }
   while (!s.empty() && s.back() == ' ') s.pop_back();
   return s + tail;
+}
+
+// 按当前字体把 UTF-8 字符串折成若干行，每行宽度不超过 maxW；英文单词不从中间断开。
+// 超过 maxLines 行时，最后一行截断并加“…”。至少返回一行
+std::vector<std::string> wrap(const std::string& s, int maxW, int maxLines) {
+  auto wordByte = [](char c) { return static_cast<uint8_t>(c) < 0x80 && c != ' '; };
+  std::vector<std::string> lines;
+  std::string line;
+  size_t i = 0;
+  while (i < s.size()) {
+    size_t n = 1;
+    while (i + n < s.size() && (static_cast<uint8_t>(s[i + n]) & 0xC0) == 0x80) n++;
+    const std::string ch = s.substr(i, n);
+    if (!line.empty() && u8g2.getUTF8Width((line + ch).c_str()) > maxW) {
+      // 断在英文单词中间时，把这个单词整个挪到下一行（整行都是一个单词就只能硬断）
+      std::string rest;
+      if (wordByte(ch[0]) && wordByte(line.back())) {
+        size_t k = line.size();
+        while (k > 0 && wordByte(line[k - 1])) k--;
+        if (k > 0) {
+          rest = line.substr(k);
+          line.resize(k);
+        }
+      }
+      while (!line.empty() && line.back() == ' ') line.pop_back();
+      if (static_cast<int>(lines.size()) == maxLines - 1) {
+        lines.push_back(fit(line + rest + s.substr(i), maxW, true));
+        return lines;
+      }
+      lines.push_back(line);
+      line = rest;
+      if (line.empty() && ch == " ") {  // 行首不留空格
+        i += n;
+        continue;
+      }
+    }
+    line += ch;
+    i += n;
+  }
+  if (!line.empty() || lines.empty()) lines.push_back(line);
+  return lines;
 }
 
 int columnOfWeekday(int wd) { return WEEK_STARTS_MONDAY ? (wd + 6) % 7 : wd; }
@@ -280,14 +327,19 @@ DayTag dayTag(const RenderInput& in, int32_t day) {
 void drawAgenda(Adafruit_GFX& gfx, const RenderInput& in) {
   struct Line {
     enum Kind { Title, Event, Note } kind;
-    std::string left;   // Title：日期；Event：时间；Note：文字
+    std::string left;   // Title：日期；Event：时间
     std::string right;  // Title：节日等标注；Event：日程标题
     uint16_t color = C_BLACK;  // Title / Note 文字之外那部分的颜色
+    std::vector<std::string> body;  // Event：折好行的日程标题；Note：折好行的文字
   };
   auto height = [](const Line& l, bool first) {
-    return l.kind == Line::Title ? (first ? 18 : 20) : l.kind == Line::Event ? kEventH : 17;
+    if (l.kind == Line::Title) return first ? 20 : 23;
+    const int rest = static_cast<int>(l.body.size() - 1) * kEventWrapH;
+    return (l.kind == Line::Event ? kEventH : kNoteH) + rest;
   };
 
+  constexpr int kBodyW = kAgendaR - kAgendaX - kTimeW;
+  setFont(kFontEvent);  // 折行按日程标题的字体量宽度
   std::vector<Line> lines;
   const int32_t today = cal::daysFromCivil(in.year, in.month, in.day);
   for (int k = 0; k < AGENDA_DAYS; k++) {
@@ -298,7 +350,8 @@ void drawAgenda(Adafruit_GFX& gfx, const RenderInput& in) {
       if (!e.coversDay(day)) continue;
       if (k > 0 && e.coversDay(day - 1)) continue;  // 跨天事件只列一次
       const bool showTime = !e.allDay && ics::dayOf(e.start) == day;
-      items.push_back({Line::Event, e.allDay ? "全天" : showTime ? hhmm(e.start) : "", e.summary});
+      items.push_back({Line::Event, e.allDay ? "全天" : showTime ? hhmm(e.start) : "", e.summary, C_BLACK,
+                       wrap(e.summary, kBodyW, kEventMaxLines)});
     }
     // 今天的节日已经显示在左上角，“今天”这一行右边放状态栏
     const DayTag tag = k == 0 ? DayTag{in.status, in.icsFailed ? C_RED : C_BLACK, true} : dayTag(in, day);
@@ -307,21 +360,34 @@ void drawAgenda(Adafruit_GFX& gfx, const RenderInput& in) {
     lines.push_back({Line::Title, dayTitle(day, k), tag.text, tag.color});
     lines.insert(lines.end(), items.begin(), items.end());
     if (k == 0 && items.empty()) {
-      if (!in.icsConfigured) {
-        lines.push_back({Line::Note, "未配置在线日历，可在设置页面添加", "", C_BLACK});
-      } else {
-        lines.push_back({Line::Note, in.icsFailed ? "日程同步失败" : "没有日程", "", in.icsFailed ? C_RED : C_BLACK});
-      }
+      const std::string note = !in.icsConfigured ? "未配置在线日历，可在设置页面添加"
+                               : in.icsFailed    ? "日程同步失败"
+                                                 : "没有日程";
+      setFont(kFontAgenda);
+      lines.push_back({Line::Note, "", "", in.icsConfigured && in.icsFailed ? C_RED : C_BLACK,
+                       wrap(note, kAgendaR - kAgendaX, 2)});
+      setFont(kFontEvent);
     }
   }
 
   // 放不下时最后一行留给“还有 N 项”，且不要以一个孤零零的日期标题结尾
-  constexpr int kTop = 4, kBottom = SCREEN_H - 4, kMoreH = 17;
+  constexpr int kTop = 4, kBottom = SCREEN_H - 4, kMoreH = 19;
   size_t shown = 0;
   int total = 0;
   while (shown < lines.size() && total + height(lines[shown], shown == 0) <= kBottom - kTop) {
     total += height(lines[shown], shown == 0);
     shown++;
+  }
+  if (shown < lines.size() && lines[shown].kind == Line::Event) {
+    // 折了好几行的日程放不全时，先显示放得下的前几行（末尾加“…”），免得底下空一大块
+    const int room = kBottom - kTop - total - (shown + 1 < lines.size() ? kMoreH : 0);
+    const int rows = room >= kEventH ? 1 + (room - kEventH) / kEventWrapH : 0;
+    Line& l = lines[shown];
+    if (rows > 0 && rows < static_cast<int>(l.body.size())) {
+      l.body = wrap(l.right, kBodyW, rows);
+      total += height(l, false);
+      shown++;
+    }
   }
   if (shown < lines.size()) {
     while (shown > 0 && total + kMoreH > kBottom - kTop) {
@@ -339,29 +405,37 @@ void drawAgenda(Adafruit_GFX& gfx, const RenderInput& in) {
     y += height(l, i == 0);
     switch (l.kind) {
       case Line::Title:
-        setFont(kFontCn12);
+        setFont(kFontAgenda);
         text(kAgendaX, y - 6, l.left.c_str(), C_RED);
         textRight(kAgendaR, y - 6, fit(l.right, kAgendaR - kAgendaX - u8g2.getUTF8Width(l.left.c_str()) - 12).c_str(),
                   l.color);
         gfx.drawFastHLine(kAgendaX, y - 2, kAgendaR - kAgendaX, C_BLACK);
         break;
-      case Line::Event:
-        setFont(kFontCn12);
-        text(kAgendaX, y - kEventBase, l.left.c_str(), C_BLACK);
+      case Line::Event: {
+        const int base = y - height(l, false) + kEventH - kEventBase;  // 第一行的基线
+        setFont(kFontAgenda);
+        text(kAgendaX, base, l.left.c_str(), C_BLACK);
         setFont(kFontEvent);
-        text(kAgendaX + 36, y - kEventBase, fit(l.right, kAgendaR - kAgendaX - 36, true).c_str(), C_BLACK);
+        for (size_t r = 0; r < l.body.size(); r++) {
+          text(kAgendaX + kTimeW, base + static_cast<int>(r) * kEventWrapH, l.body[r].c_str(), C_BLACK);
+        }
         break;
-      case Line::Note:
-        setFont(kFontCn12);
-        text(kAgendaX, y - 4, fit(l.left, kAgendaR - kAgendaX).c_str(), l.color);
+      }
+      case Line::Note: {
+        const int base = y - height(l, false) + kNoteH - 4;
+        setFont(kFontAgenda);
+        for (size_t r = 0; r < l.body.size(); r++) {
+          text(kAgendaX, base + static_cast<int>(r) * kEventWrapH, l.body[r].c_str(), l.color);
+        }
         break;
+      }
     }
   }
   if (hidden > 0) {
     char buf[32];
     snprintf(buf, sizeof buf, "…还有 %d 项", hidden);
-    setFont(kFontCn12);
-    text(kAgendaX + 36, y + kMoreH - 4, buf, C_BLACK);
+    setFont(kFontAgenda);
+    text(kAgendaX + kTimeW, y + kMoreH - 4, buf, C_BLACK);
   }
 }
 
