@@ -14,7 +14,9 @@
 #include <WiFi.h>
 #include <driver/gpio.h>
 #include <esp_core_dump.h>
+#include <esp_heap_caps.h>
 #include <esp_sleep.h>
+#include <mbedtls/platform.h>
 #include <sys/time.h>
 #if __has_include(<esp_rtc_time.h>)
 #include <esp_rtc_time.h>
@@ -381,6 +383,13 @@ void runSync(bool online) {
   wifi::holdForSync(false);
 }
 
+// HTTPS 握手要几十 KB 连续内存，预编译的 Arduino 3.x 库让 mbedTLS 只用片内内存。C5 片内内存小，
+// 蓝牙一开就分配失败（SSL - Memory allocation failed）。有 PSRAM 时让 mbedTLS 优先用 PSRAM
+void* tlsCalloc(size_t n, size_t size) {
+  void* p = heap_caps_calloc(n, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  return p ? p : heap_caps_calloc(n, size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+}
+
 // ---------- USB 喂数据（没网时用电脑代为下载，见 tools/usb_feed.py） ----------
 // 电脑通过 USB 串口发一行命令（# 开头），板子处理完回一行 "#ok ..." 或 "#err ..."：
 //   #time <unix 秒>            对时
@@ -651,6 +660,9 @@ void setup() {
   reportCrash();
 
   if (!canvas.ok()) LOGF("帧缓冲分配失败！");
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  if (psramFound()) mbedtls_platform_set_calloc_free(tlsCalloc, free);
+#endif
   if (!LittleFS.begin(true)) LOGF("LittleFS 挂载失败，节假日数据将无法缓存");
   setCpuFrequencyMhz(CPU_MHZ_IDLE);
   pinMode(BUTTON_PIN, INPUT_PULLUP);

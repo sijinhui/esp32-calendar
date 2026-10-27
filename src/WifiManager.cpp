@@ -186,6 +186,12 @@ void begin() {
   WiFi.onEvent([](arduino_event_id_t, arduino_event_info_t) { gotIpCount++; }, ARDUINO_EVENT_WIFI_STA_GOT_IP);
   WiFi.setHostname(HOSTNAME);
   WiFi.mode(WIFI_STA);
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  // 同名 WiFi 有多台路由器（公司、Mesh）时，默认连扫到的第一台，可能是信号最差的；改成扫完所有信道挑最强的。
+  // 只影响第一次连接，之后用缓存的信道和 BSSID 快速重连
+  WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
+  WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
+#endif
   powered = true;
 
   uint8_t mac[6];
