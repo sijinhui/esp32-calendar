@@ -60,7 +60,11 @@ std::string reasonText(uint8_t reason) {
     case 0:
       return "连接超时";
     case WIFI_REASON_NO_AP_FOUND:
+#if CONFIG_SOC_WIFI_SUPPORT_5G
+      return "找不到这个 WiFi（检查名字和外接天线）";
+#else
       return "找不到这个 WiFi（设备只支持 2.4GHz）";
+#endif
     case WIFI_REASON_AUTH_FAIL:
     case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
     case WIFI_REASON_HANDSHAKE_TIMEOUT:
