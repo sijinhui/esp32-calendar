@@ -15,9 +15,11 @@
 #include <driver/gpio.h>
 #include <esp_core_dump.h>
 #include <esp_sleep.h>
+#include <sys/time.h>
 #include <time.h>
 
 #include <algorithm>
+#include <memory>
 
 #include "BleControl.h"
 #include "CalendarRenderer.h"
@@ -369,6 +371,137 @@ void runSync(bool online) {
   wifi::holdForSync(false);
 }
 
+// ---------- USB 喂数据（没网时用电脑代为下载，见 tools/usb_feed.py） ----------
+// 电脑通过 USB 串口发一行命令（# 开头），板子处理完回一行 "#ok ..." 或 "#err ..."：
+//   #time <unix 秒>            对时
+//   #holiday <年份>            开始接收这一年的节假日 JSON（之后用 #data 发内容，#done 结束）
+//   #ics                       开始接收一个 iCal 日历（同上；可以连发多个）
+//   #data <字节数>             后面紧跟这么多字节的原始数据（每块最多 USB_FEED_CHUNK 字节）
+//   #done                      当前这份数据发完
+//   #render                    用收到的日历替换现有日程，重画并刷墨水屏
+constexpr size_t USB_FEED_CHUNK = 1024;
+
+struct UsbFeed {
+  enum Mode { kNone, kHoliday, kIcs } mode = kNone;
+  int year = 0;
+  String body;                            // 节假日 JSON
+  std::unique_ptr<ics::Parser> parser;    // 当前日历
+  std::vector<ics::Event> merged;         // 已收完的日历
+  int calendars = 0;
+  std::string line;
+  size_t dataLeft = 0;                    // 还要收多少字节原始数据
+};
+UsbFeed feed;
+
+void feedReply(bool ok, const std::string& msg) {
+  Serial.printf("%s %s\n", ok ? "#ok" : "#err", msg.c_str());
+}
+
+void feedFinishPart() {
+  if (feed.mode == UsbFeed::kHoliday) {
+    if (holidays.loadJson(feed.body.c_str(), feed.body.length()) >= 0) {
+      char path[32];
+      snprintf(path, sizeof path, "/holiday-%d.json", feed.year);
+      File f = LittleFS.open(path, "w");
+      if (f) {
+        f.print(feed.body);
+        f.close();
+      }
+      LOGF("USB：节假日数据 %d 已更新（%u 字节）", feed.year, feed.body.length());
+      feedReply(true, "holiday " + std::to_string(feed.year));
+    } else {
+      feedReply(false, "节假日 JSON 格式错误");
+    }
+    feed.body = String();
+  } else if (feed.mode == UsbFeed::kIcs && feed.parser) {
+    feed.parser->finish();
+    feed.calendars++;
+    LOGF("USB：日历 #%d：%u 个 VEVENT，窗口内 %u 条", feed.calendars, feed.parser->veventCount(),
+         feed.parser->events().size());
+    feed.merged.insert(feed.merged.end(), feed.parser->events().begin(), feed.parser->events().end());
+    feedReply(true, "ics " + std::to_string(feed.parser->events().size()));
+    feed.parser.reset();
+  } else {
+    feedReply(true, "");
+  }
+  feed.mode = UsbFeed::kNone;
+}
+
+void feedCommand(const std::string& cmd) {
+  if (cmd.rfind("#time ", 0) == 0) {
+    timeval tv{static_cast<time_t>(strtoll(cmd.c_str() + 6, nullptr, 10)), 0};
+    settimeofday(&tv, nullptr);
+    LOGF("USB：已对时");
+    feedReply(true, "time");
+  } else if (cmd.rfind("#holiday ", 0) == 0) {
+    feed.mode = UsbFeed::kHoliday;
+    feed.year = atoi(cmd.c_str() + 9);
+    feed.body = String();
+    feedReply(true, "");
+  } else if (cmd == "#ics") {
+    int y, m, d;
+    if (!today(y, m, d)) return feedReply(false, "先发 #time 对时");
+    ics::LocalTime from, to;
+    eventWindow(y, m, d, from, to);
+    feed.mode = UsbFeed::kIcs;
+    feed.parser.reset(new ics::Parser(from, to, TZ_OFFSET_SEC));
+    feedReply(true, "");
+  } else if (cmd.rfind("#data ", 0) == 0) {
+    feed.dataLeft = strtoul(cmd.c_str() + 6, nullptr, 10);
+    if (feed.dataLeft == 0 || feed.dataLeft > USB_FEED_CHUNK) {
+      feed.dataLeft = 0;
+      feedReply(false, "数据块大小不对");
+    }
+  } else if (cmd == "#done") {
+    feedFinishPart();
+  } else if (cmd == "#render") {
+    int y, m, d;
+    if (!today(y, m, d)) return feedReply(false, "先发 #time 对时");
+    if (feed.calendars > 0) {
+      ics::sortEvents(feed.merged);
+      events.swap(feed.merged);
+    }
+    feed.merged.clear();
+    feed.calendars = 0;
+    icsResult = net::IcsResult();
+    icsResult.sources = net::icsSourceCount();
+    icsResult.ok = icsResult.sources;
+    icsFailures = 0;
+    lastSync = time(nullptr);
+    syncedDay = cal::daysFromCivil(y, m, d);
+    LOGF("USB：数据已更新，日程 %u 条，刷新屏幕", events.size());
+    render(true);
+    feedReply(true, "render " + std::to_string(events.size()));
+  } else {
+    feedReply(false, "未知命令 " + cmd);
+  }
+}
+
+void usbFeed() {
+  while (Serial.available() > 0) {
+    if (feed.dataLeft > 0) {
+      uint8_t buf[256];
+      const size_t n = Serial.read(buf, std::min(sizeof buf, feed.dataLeft));
+      if (n == 0) return;
+      if (feed.mode == UsbFeed::kHoliday) {
+        feed.body.concat(reinterpret_cast<const char*>(buf), n);
+      } else if (feed.mode == UsbFeed::kIcs && feed.parser) {
+        feed.parser->feed(reinterpret_cast<const char*>(buf), n);
+      }
+      feed.dataLeft -= n;
+      if (feed.dataLeft == 0) feedReply(true, "");
+      continue;
+    }
+    const int c = Serial.read();
+    if (c == '\n') {
+      if (!feed.line.empty() && feed.line[0] == '#') feedCommand(feed.line);
+      feed.line.clear();
+    } else if (c != '\r' && feed.line.size() < 64) {
+      feed.line += static_cast<char>(c);
+    }
+  }
+}
+
 // 每秒检查一次：配网画面、预览超时、该不该同步
 void tick() {
   if (restartAt && millis() - restartAt > 2000) {
@@ -439,6 +572,7 @@ void sleepIfIdle() {
 }  // namespace
 
 void setup() {
+  Serial.setRxBufferSize(4096);  // USB 喂数据（usbFeed）一块 1KB，留足余量
   Log.begin(115200);
   delay(1500);  // 给 USB 串口一点时间，方便看到开机日志
   LOGF("==== ESP32 墨水屏日历 ====");
@@ -505,6 +639,7 @@ void setup() {
 }
 
 void loop() {
+  usbFeed();
   wifi::loop();
   web::loop();
   ble::loop();
