@@ -78,7 +78,8 @@
 #define HTTP_TLS_TIMEOUT_S 10         //           HTTPS 握手超时（库默认 120 秒）
 #define HTTP_READ_TIMEOUT_MS 10000    //           等待数据超时（多久收不到数据算失败，不是整个下载的时间）
 // 法定节假日 / 调休数据：https://github.com/NateScarlet/holiday-cn
-#define HOLIDAY_URL_FMT "https://gcore.jsdelivr.net/gh/NateScarlet/holiday-cn@master/%d.json"
+// 走自己的 GitHub 镜像（前缀 + raw.githubusercontent.com 完整地址，跟 OTA_MIRRORS 一样）；jsdelivr 在国内连续请求时经常被重置连接
+#define HOLIDAY_URL_FMT "https://proxy.xiaosi.cc/https://raw.githubusercontent.com/NateScarlet/holiday-cn/master/%d.json"
 
 #define HOSTNAME "esp32-calendar"  // 局域网访问 http://esp32-calendar.local/
 
