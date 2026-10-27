@@ -71,7 +71,7 @@ int httpGet(String url, Stream* sink, String* body, std::string& error) {
     http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
     http.setConnectTimeout(HTTP_CONNECT_TIMEOUT_MS);
     http.setTimeout(HTTP_READ_TIMEOUT_MS);
-    http.setUserAgent("esp32-epaper-calendar");
+    http.setUserAgent("esp32-calendar");
     if (!http.begin(*client, url)) {
       error = "URL 无效";
       return -1;

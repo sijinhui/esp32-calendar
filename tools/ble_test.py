@@ -112,7 +112,7 @@ async def main(args):
             ok = r.get("state") == "connected"
             check("蓝牙配网", ok, f"设备 IP {r.get('ip')}" if ok else r.get("error", str(r)))
             if ok:
-                print(f"  在同一个 WiFi 下打开 http://{r.get('ip')}/ 或 http://epaper-calendar.local/")
+                print(f"  在同一个 WiFi 下打开 http://{r.get('ip')}/ 或 http://esp32-calendar.local/")
         await client.stop_notify(TX)
 
     print(f"\n通过 {passed} 项，失败 {failed} 项")

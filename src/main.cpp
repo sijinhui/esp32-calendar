@@ -5,7 +5,7 @@
 // 之后跨天时、以及每 ICS_SYNC_MINUTES 分钟同步一次（节假日每天一次）；画面没变就不刷墨水屏。
 // 省电模式（DEBUG_MODE=0）：WiFi 只在开机后 / 短按 BOOT 键后的 WIFI_WINDOW_S 秒、以及同步时打开，
 // 其余时间浅睡眠，到点或按 BOOT 键醒来。开发模式（DEBUG_MODE=1）：一直联网，不睡眠。
-// 没有屏幕时，用浏览器打开 http://epaper-calendar.local/ 查看画面。
+// 没有屏幕时，用浏览器打开 http://esp32-calendar.local/ 查看画面。
 // 配网：手机连设备热点（会自动弹出设置页），或者用微信小程序走蓝牙；长按 BOOT 键随时重新配网。
 #include <Arduino.h>
 #include <ArduinoJson.h>

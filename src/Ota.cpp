@@ -43,7 +43,7 @@ bool open(const std::string& githubUrl, WiFiClientSecure& client, HTTPClient& ht
     client.setHandshakeTimeout(HTTP_TLS_TIMEOUT_S);
     http.setConnectTimeout(HTTP_CONNECT_TIMEOUT_MS);
     http.setTimeout(HTTP_READ_TIMEOUT_MS);
-    http.setUserAgent("esp32-epaper-calendar");
+    http.setUserAgent("esp32-calendar");
     // GitHub 的下载地址会跳转到文件服务器
     http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
     if (!http.begin(client, url.c_str())) {

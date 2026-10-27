@@ -2,7 +2,7 @@
 //   /         实时查看屏幕画面（没有墨水屏时的“虚拟屏幕”），预览任意日期，手动同步/刷屏
 //   /setup    设置 WiFi 和日历订阅；配网模式下手机连上热点会自动弹出这个页面
 //   /api/*    JSON 接口，网页和微信小程序共用
-// 局域网访问 http://epaper-calendar.local/ 或 http://<设备 IP>/；配网热点里访问 http://192.168.4.1/
+// 局域网访问 http://esp32-calendar.local/ 或 http://<设备 IP>/；配网热点里访问 http://192.168.4.1/
 #pragma once
 
 #include <Arduino.h>

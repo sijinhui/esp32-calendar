@@ -1,6 +1,6 @@
 {
   "description": "墨水屏日历：蓝牙配网、查看画面、设置日历订阅",
-  "projectname": "epaper-calendar",
+  "projectname": "esp32-calendar",
   "appid": "touristappid",
   "compileType": "miniprogram",
   "setting": {

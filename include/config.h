@@ -2,7 +2,7 @@
 #pragma once
 
 // ===================== 墨水屏 =====================
-// 1 = 驱动墨水屏。网页预览（http://epaper-calendar.local/）不受影响，开不开都能看画面。
+// 1 = 驱动墨水屏。网页预览（http://esp32-calendar.local/）不受影响，开不开都能看画面。
 // 没接屏幕时 BUSY 脚悬空，刷屏可能要等超时（串口打印 Busy Timeout!，最多卡住约 1 分钟），
 // 只用网页预览、不想等就改成 0。CI 编译的 Release 固件也用这个默认值，自动升级后照样驱动屏幕
 #ifndef EPD_ENABLED
@@ -61,7 +61,7 @@
 // 法定节假日 / 调休数据：https://github.com/NateScarlet/holiday-cn
 #define HOLIDAY_URL_FMT "https://fastly.jsdelivr.net/gh/NateScarlet/holiday-cn@master/%d.json"
 
-#define HOSTNAME "epaper-calendar"  // 局域网访问 http://epaper-calendar.local/
+#define HOSTNAME "esp32-calendar"  // 局域网访问 http://esp32-calendar.local/
 
 // ===================== 在线升级 =====================
 // 每天第一次同步后检查 GitHub 上的最新 Release，有新版本就自动下载升级（见 src/Ota.h）
