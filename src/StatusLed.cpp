@@ -23,7 +23,14 @@ void write(uint8_t r, uint8_t g, uint8_t b) {
   const uint32_t rgb = (uint32_t(r) << 16) | (uint32_t(g) << 8) | b;
   if (rgb == shown) return;
   shown = rgb;
+#if STATUS_LED_MONO
+  pinMode(RGB_LED_PIN, OUTPUT);
+  digitalWrite(RGB_LED_PIN, rgb ? LOW : HIGH);  // 低电平亮
+#elif ESP_ARDUINO_VERSION_MAJOR >= 3
+  rgbLedWrite(RGB_LED_PIN, scale(r), scale(g), scale(b));
+#else
   neopixelWrite(RGB_LED_PIN, scale(r), scale(g), scale(b));
+#endif
 }
 
 void refresh() {

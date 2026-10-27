@@ -196,7 +196,13 @@ bool begin() {
 #ifdef EPD_PROBE
   probe();
 #endif
-  SPI.begin(EPD_PIN_SCK, -1, EPD_PIN_MOSI, EPD_PIN_CS);
+  // GxEPD2 先 digitalWrite 再 pinMode，Arduino 3.x（C5）会报“IO x is not set as GPIO”并让脚先掉低一下，
+  // 所以先把这几根线设成输出高电平。CS 由 GxEPD2 手动控制，不交给 SPI 外设
+  for (const int pin : {EPD_PIN_CS, EPD_PIN_DC, EPD_PIN_RST}) {
+    pinMode(pin, OUTPUT);
+    digitalWrite(pin, HIGH);
+  }
+  SPI.begin(EPD_PIN_SCK, -1, EPD_PIN_MOSI, -1);
   display.epd2.selectSPI(SPI, SPISettings(4000000, MSBFIRST, SPI_MODE0));
   display.init(115200, true, EPD_RESET_MS, false);
   display.setRotation(0);

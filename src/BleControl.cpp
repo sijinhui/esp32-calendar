@@ -203,7 +203,9 @@ void start() {
       service->createCharacteristic(kRxUuid, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
   rx->setCallbacks(&rxCallbacks);
   tx = service->createCharacteristic(kTxUuid, NIMBLE_PROPERTY::NOTIFY);
-  service->start();
+#if ESP_ARDUINO_VERSION_MAJOR < 3
+  service->start();  // NimBLE 2.x 会在服务器启动时自动启动服务
+#endif
   advMfg.clear();
   updateAdvertising();
   lastAdvAt = millis();

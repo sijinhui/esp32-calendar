@@ -24,15 +24,16 @@
 #define EPD_RESET_MS 2
 
 #if CONFIG_IDF_TARGET_ESP32C5
-// ESP32-C5-DevKitC-1：J1 排针（有 3V3 的那排）第 6~11 位是 1 6 7 8 9 10，同样一排杜邦线倒着插：
-// BUSY 接 10、CS 接 9 …… SCL 接 1；3.3V、GND 单独接。避开了 13/14 USB、11/12 串口日志、27 RGB 灯、28 BOOT 键、
-// 25/26 启动引脚（7 也是启动引脚，但只影响 SDIO 下载模式，接 RES 没问题）
-#define EPD_PIN_BUSY 10
-#define EPD_PIN_CS 9
-#define EPD_PIN_DC 8    // 驱动板上标 D/C
-#define EPD_PIN_RST 7   // 驱动板上标 RES
-#define EPD_PIN_MOSI 6  // 驱动板上标 SDI（有的屏标 DIN / SDA）
-#define EPD_PIN_SCK 1   // 驱动板上标 SCL（有的屏标 CLK）
+// Seeed XIAO ESP32-C5（https://wiki.seeedstudio.com/cn/xiao_esp32c5_getting_started/）：
+//   右排 3V3 下面紧挨着 D10 D9 D8：SDI 接 D10、BUSY 接 D9、SCL 接 D8（D10/D8 正好是硬件 SPI 的 MOSI/SCK）
+//   左排：D/C 接 D0、CS 接 D1、RES 接 D3；屏幕的 3.3V、GND 接右排 3V3、GND
+// 避开了 D2（GPIO25 启动引脚，BUSY 这种输入接上去可能影响开机）、D6/D7 串口、GPIO27 用户灯、GPIO28 BOOT 键
+#define EPD_PIN_BUSY 9  // D9
+#define EPD_PIN_CS 0    // D1
+#define EPD_PIN_DC 1    // D0，驱动板上标 D/C
+#define EPD_PIN_RST 7   // D3，驱动板上标 RES（GPIO7 是启动引脚，但只影响 SDIO 下载模式，当输出没问题）
+#define EPD_PIN_MOSI 10 // D10，驱动板上标 SDI（有的屏标 DIN / SDA）
+#define EPD_PIN_SCK 8   // D8，驱动板上标 SCL（有的屏标 CLK）
 #else
 // 接线（ESP32-S3 任意 GPIO 都可以，避开 0/3/45/46 启动引脚、19/20 USB、26~37 Flash/PSRAM、43/44 串口日志、48 RGB 灯）
 // 8PIN 通用驱动板的丝印顺序是 BUSY CS D/C RES SDI SCL；DevKitC 有 3V3 的那排排针第 4~9 位是 4 5 6 7 15 16，
@@ -82,8 +83,14 @@
 
 // ===================== 在线升级 =====================
 // 每天第一次同步后检查 GitHub 上的最新 Release，有新版本就自动下载升级（见 src/Ota.h）
+// Release 目前只发布 S3 固件；C5 先禁用 OTA，避免把另一芯片的固件刷进来。
+// 将来 CI 按芯片分别发布固件、并让设备选择对应文件后，才能给 C5 打开。
 #ifndef OTA_ENABLED
+#if CONFIG_IDF_TARGET_ESP32C5
+#define OTA_ENABLED 0
+#else
 #define OTA_ENABLED 1
+#endif
 #endif
 #define OTA_REPO "sijinhui/esp32-calendar"  // 从哪个仓库的 Release 下载
 #define OTA_ASSET "firmware.bin"            // Release 里的固件文件名（CI 自动上传）
@@ -101,11 +108,14 @@
 
 // ===================== 状态灯 =====================
 // 板载 WS2818 RGB 灯，平时熄灭，只在同步中 / 同步结果 / 配网中亮（见 src/StatusLed.h）
-// 乐鑫 ESP32-S3-DevKitC-1 v1.0 接 GPIO48，v1.1 接 GPIO38；ESP32-C5-DevKitC-1 接 GPIO27；板子不同请改这里
+// 乐鑫 ESP32-S3-DevKitC-1 v1.0 接 GPIO48，v1.1 接 GPIO38；板子不同请改这里
+// XIAO ESP32-C5 没有 RGB 灯，只有一颗黄色用户灯（GPIO27，低电平亮）：颜色没法区分，只保留亮 / 灭 / 闪烁
 #if CONFIG_IDF_TARGET_ESP32C5
 #define RGB_LED_PIN 27
+#define STATUS_LED_MONO 1
 #else
 #define RGB_LED_PIN 48
+#define STATUS_LED_MONO 0
 #endif
 #define RGB_LED_BRIGHTNESS 10  // 0~255
 #define RGB_LED_DONE_MS 3000   // 同步成功（绿）/ 失败（红）后灯亮多久
@@ -131,7 +141,7 @@
 
 // ===================== 配网 =====================
 // 进入配网模式后，设备开热点 EPaper-XXXX，同时打开蓝牙接受微信小程序的配置；平时蓝牙关闭省电
-// 开发板上的 BOOT 键：长按进入配网模式，短按打开 WiFi 和网页（省电模式）。S3 是 GPIO0，C5 是 GPIO28
+// 开发板上的 BOOT 键：长按进入配网模式，短按打开 WiFi 和网页（省电模式）。S3 是 GPIO0，XIAO ESP32-C5 是 GPIO28
 #if CONFIG_IDF_TARGET_ESP32C5
 #define BUTTON_PIN 28
 #else

@@ -74,18 +74,31 @@ const char* resetReason() {
 }
 
 // 程序崩溃时系统会把现场存到 coredump 分区；开机读出摘要打到日志里（设备不插 UART 口也能知道崩在哪），然后清掉。
-// 地址用 xtensa-esp32s3-elf-addr2line -pfiaC -e .pio/build/esp32s3/firmware.elf <地址> 解析
+// S3 的地址用 xtensa-esp32s3-elf-addr2line 解析；C5 是 RISC-V，没有片上回溯，打印栈数据供 GDB 解析。
 void reportCrash() {
   if (esp_core_dump_image_check() != ESP_OK) return;
   auto* sum = static_cast<esp_core_dump_summary_t*>(malloc(sizeof(esp_core_dump_summary_t)));
   if (sum && esp_core_dump_get_summary(sum) == ESP_OK) {
     char buf[320];
+#ifdef CONFIG_IDF_TARGET_ARCH_RISCV
+    int n = snprintf(buf, sizeof buf, "任务 %s，PC 0x%08x，mcause 0x%08x，mtval 0x%08x，栈数据 %u 字节",
+                     sum->exc_task, static_cast<unsigned>(sum->exc_pc),
+                     static_cast<unsigned>(sum->ex_info.mcause), static_cast<unsigned>(sum->ex_info.mtval),
+                     static_cast<unsigned>(sum->exc_bt_info.dump_size));
+    const uint32_t count = std::min(sum->exc_bt_info.dump_size / 4, uint32_t{8});
+    for (uint32_t i = 0; i < count && n < static_cast<int>(sizeof buf) - 12; i++) {
+      uint32_t word;
+      memcpy(&word, sum->exc_bt_info.stackdump + i * 4, sizeof word);
+      n += snprintf(buf + n, sizeof buf - n, " 0x%08x", static_cast<unsigned>(word));
+    }
+#else
     int n = snprintf(buf, sizeof buf, "任务 %s，PC 0x%08x，异常 %u，地址 0x%08x，回溯", sum->exc_task,
                      static_cast<unsigned>(sum->exc_pc), static_cast<unsigned>(sum->ex_info.exc_cause),
                      static_cast<unsigned>(sum->ex_info.exc_vaddr));
     for (uint32_t i = 0; i < sum->exc_bt_info.depth && n < static_cast<int>(sizeof buf) - 12; i++) {
       n += snprintf(buf + n, sizeof buf - n, " 0x%08x", static_cast<unsigned>(sum->exc_bt_info.bt[i]));
     }
+#endif
     lastCrash = buf;
     LOGF("上次崩溃：%s", buf);
   }
@@ -428,7 +441,7 @@ void sleepIfIdle() {
 void setup() {
   Log.begin(115200);
   delay(1500);  // 给 USB 串口一点时间，方便看到开机日志
-  LOGF("==== ESP32-S3 墨水屏日历 ====");
+  LOGF("==== ESP32 墨水屏日历 ====");
   LOGF("芯片 %s，Flash %u MB，PSRAM %u MB，可用内存 %u 字节", ESP.getChipModel(), ESP.getFlashChipSize() >> 20,
        ESP.getPsramSize() >> 20, ESP.getFreeHeap());
   LOGF("上次重启原因：%s", resetReason());
