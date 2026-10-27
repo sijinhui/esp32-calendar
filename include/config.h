@@ -1,6 +1,11 @@
 // 硬件与功能配置
 #pragma once
 
+// 下面按芯片（CONFIG_IDF_TARGET_ESP32C5 等）选引脚，要先拿到 sdkconfig；电脑上跑单元测试时没有这个文件
+#if __has_include(<sdkconfig.h>)
+#include <sdkconfig.h>
+#endif
+
 // ===================== 墨水屏 =====================
 // 1 = 驱动墨水屏。网页预览（http://esp32-calendar.local/）不受影响，开不开都能看画面。
 // 没接屏幕时 BUSY 脚悬空，刷屏可能要等超时（串口打印 Busy Timeout!，最多卡住约 1 分钟），
@@ -18,6 +23,17 @@
 // 微雪（Waveshare）的驱动板 / HAT 复位电路比较特殊，需要 2ms 的短复位脉冲；其他转接板用 10
 #define EPD_RESET_MS 2
 
+#if CONFIG_IDF_TARGET_ESP32C5
+// ESP32-C5-DevKitC-1：J1 排针（有 3V3 的那排）第 6~11 位是 1 6 7 8 9 10，同样一排杜邦线倒着插：
+// BUSY 接 10、CS 接 9 …… SCL 接 1；3.3V、GND 单独接。避开了 13/14 USB、11/12 串口日志、27 RGB 灯、28 BOOT 键、
+// 25/26 启动引脚（7 也是启动引脚，但只影响 SDIO 下载模式，接 RES 没问题）
+#define EPD_PIN_BUSY 10
+#define EPD_PIN_CS 9
+#define EPD_PIN_DC 8    // 驱动板上标 D/C
+#define EPD_PIN_RST 7   // 驱动板上标 RES
+#define EPD_PIN_MOSI 6  // 驱动板上标 SDI（有的屏标 DIN / SDA）
+#define EPD_PIN_SCK 1   // 驱动板上标 SCL（有的屏标 CLK）
+#else
 // 接线（ESP32-S3 任意 GPIO 都可以，避开 0/3/45/46 启动引脚、19/20 USB、26~37 Flash/PSRAM、43/44 串口日志、48 RGB 灯）
 // 8PIN 通用驱动板的丝印顺序是 BUSY CS D/C RES SDI SCL；DevKitC 有 3V3 的那排排针第 4~9 位是 4 5 6 7 15 16，
 // 6 根信号线用一排杜邦线倒着插：BUSY 接 16、CS 接 15 …… SCL 接 4；3.3V、GND 单独接（别插到 5V 上）
@@ -27,6 +43,7 @@
 #define EPD_PIN_RST 6   // 驱动板上标 RES
 #define EPD_PIN_MOSI 5  // 驱动板上标 SDI（有的屏标 DIN / SDA）
 #define EPD_PIN_SCK 4   // 驱动板上标 SCL（有的屏标 CLK）
+#endif
 
 #define SCREEN_W 400
 #define SCREEN_H 300
@@ -84,8 +101,12 @@
 
 // ===================== 状态灯 =====================
 // 板载 WS2818 RGB 灯，平时熄灭，只在同步中 / 同步结果 / 配网中亮（见 src/StatusLed.h）
-// 乐鑫 ESP32-S3-DevKitC-1 v1.0 接 GPIO48，v1.1 接 GPIO38；板子不同请改这里
+// 乐鑫 ESP32-S3-DevKitC-1 v1.0 接 GPIO48，v1.1 接 GPIO38；ESP32-C5-DevKitC-1 接 GPIO27；板子不同请改这里
+#if CONFIG_IDF_TARGET_ESP32C5
+#define RGB_LED_PIN 27
+#else
 #define RGB_LED_PIN 48
+#endif
 #define RGB_LED_BRIGHTNESS 10  // 0~255
 #define RGB_LED_DONE_MS 3000   // 同步成功（绿）/ 失败（红）后灯亮多久
 #define RGB_LED_BLINK_MS 500   // 慢闪：亮 / 灭各多久（同步中、配网）
@@ -110,7 +131,12 @@
 
 // ===================== 配网 =====================
 // 进入配网模式后，设备开热点 EPaper-XXXX，同时打开蓝牙接受微信小程序的配置；平时蓝牙关闭省电
-#define BUTTON_PIN 0                // 开发板上的 BOOT 键：长按进入配网模式，短按打开 WiFi 和网页（省电模式）
+// 开发板上的 BOOT 键：长按进入配网模式，短按打开 WiFi 和网页（省电模式）。S3 是 GPIO0，C5 是 GPIO28
+#if CONFIG_IDF_TARGET_ESP32C5
+#define BUTTON_PIN 28
+#else
+#define BUTTON_PIN 0
+#endif
 #define BUTTON_HOLD_MS 3000
 #define WIFI_PROVISION_AFTER_S 30   // 开发模式：已保存的 WiFi 连不上多久后自动打开配网热点（省电模式不自动开）
 #define AP_PASSWORD ""              // 配网热点密码（8 位以上），空 = 不设密码

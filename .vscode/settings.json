@@ -1,0 +1,4 @@
+{
+  // 嵌入式工程要用 PlatformIO 编译烧录，隐藏 Code Runner 的 ▶ 按钮避免误点
+  "code-runner.showRunIconInEditorTitleMenu": false
+}

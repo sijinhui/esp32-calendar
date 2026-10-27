@@ -40,15 +40,28 @@ std::string advMfg;
 uint32_t neededAt = 0;    // 最近一次需要蓝牙（配网模式）的时间
 uint32_t lastAdvAt = 0;   // 上次检查广播内容的时间
 
+// Arduino 3.x（C5）配的是 NimBLE-Arduino 2.x，回调参数从 ble_gap_conn_desc* 换成了 NimBLEConnInfo&
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+using ConnArg = NimBLEConnInfo&;
+uint16_t handleOf(ConnArg info) { return info.getConnHandle(); }
+#else
+using ConnArg = ble_gap_conn_desc*;
+uint16_t handleOf(ConnArg desc) { return desc->conn_handle; }
+#endif
+
 class ServerCallbacks : public NimBLEServerCallbacks {
-  void onConnect(NimBLEServer*, ble_gap_conn_desc* desc) override {
+  void onConnect(NimBLEServer*, ConnArg conn) override {
     std::lock_guard<std::mutex> lock(mu);
-    connHandle = desc->conn_handle;
+    connHandle = handleOf(conn);
     authorized = wifi::provisioning();
     rxBuf.clear();
     commands.clear();
   }
-  void onDisconnect(NimBLEServer*, ble_gap_conn_desc*) override {
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  void onDisconnect(NimBLEServer*, ConnArg, int) override {
+#else
+  void onDisconnect(NimBLEServer*, ConnArg) override {
+#endif
     std::lock_guard<std::mutex> lock(mu);
     connHandle = BLE_HS_CONN_HANDLE_NONE;
     authorized = false;
@@ -56,7 +69,7 @@ class ServerCallbacks : public NimBLEServerCallbacks {
 };
 
 class RxCallbacks : public NimBLECharacteristicCallbacks {
-  void onWrite(NimBLECharacteristic* c, ble_gap_conn_desc*) override {
+  void onWrite(NimBLECharacteristic* c, ConnArg) override {
     const NimBLEAttValue v = c->getValue();
     std::lock_guard<std::mutex> lock(mu);
     for (size_t i = 0; i < v.length(); i++) {
