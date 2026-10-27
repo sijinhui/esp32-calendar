@@ -78,7 +78,7 @@
 #define HTTP_TLS_TIMEOUT_S 10         //           HTTPS 握手超时（库默认 120 秒）
 #define HTTP_READ_TIMEOUT_MS 10000    //           等待数据超时（多久收不到数据算失败，不是整个下载的时间）
 // 法定节假日 / 调休数据：https://github.com/NateScarlet/holiday-cn
-#define HOLIDAY_URL_FMT "https://fastly.jsdelivr.net/gh/NateScarlet/holiday-cn@master/%d.json"
+#define HOLIDAY_URL_FMT "https://gcore.jsdelivr.net/gh/NateScarlet/holiday-cn@master/%d.json"
 
 #define HOSTNAME "esp32-calendar"  // 局域网访问 http://esp32-calendar.local/
 

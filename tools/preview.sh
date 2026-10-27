@@ -72,7 +72,7 @@ HOLIDAY_ARGS=()
 for y in "$YEAR" $((YEAR + 1)); do
   f="$BUILD/holiday-$y.json"
   if [ ! -s "$f" ]; then
-    curl -sfL --max-time 10 "https://fastly.jsdelivr.net/gh/NateScarlet/holiday-cn@master/$y.json" -o "$f" || rm -f "$f"
+    curl -sfL --max-time 10 "https://gcore.jsdelivr.net/gh/NateScarlet/holiday-cn@master/$y.json" -o "$f" || rm -f "$f"
   fi
   if [ -s "$f" ]; then HOLIDAY_ARGS+=(--holiday "$f"); fi
 done
