@@ -3,7 +3,7 @@
 
     ~/.platformio/penv/bin/python tools/usb_feed.py                     用 include/secrets.h 里的日历订阅
     ~/.platformio/penv/bin/python tools/usb_feed.py https://.../a.ics   指定订阅地址（可以写多个）
-    ~/.platformio/penv/bin/python tools/usb_feed.py --every 30          每 30 分钟推一次，Ctrl+C 退出
+    ~/.platformio/penv/bin/python tools/usb_feed.py --every 30          每 30 分钟推一次，板子重启了马上重推，Ctrl+C 退出
 
 板子要刷开发模式固件（不睡眠，USB 串口一直在）：
     PLATFORMIO_BUILD_FLAGS="-DDEBUG_MODE=1" pio run -e esp32c5 -t upload
@@ -23,6 +23,7 @@ import serial
 
 ROOT = Path(__file__).resolve().parent.parent
 CHUNK = 1024  # 和固件里的 USB_FEED_CHUNK 一致
+BOOT_BANNER = "==== ESP32 墨水屏日历 ====".encode()
 
 
 def config_value(name):
@@ -81,6 +82,36 @@ class Board:
                 if text:
                     print("  板子>", text)
         raise TimeoutError("等板子回复超时（是不是在睡眠？请刷开发模式固件）")
+
+    def watch(self, seconds):
+        """等 seconds 秒；期间板子重启了（开机日志 / 串口断开重连）就提前返回 True"""
+        deadline = time.time() + seconds
+        buf = b""
+        while time.time() < deadline:
+            try:
+                buf += self.ser.read(256)
+            except (serial.SerialException, OSError):
+                self.reopen()
+                return True
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                if BOOT_BANNER in line:
+                    time.sleep(3)  # 等它初始化完
+                    self.ser.reset_input_buffer()
+                    return True
+        return False
+
+    def reopen(self):
+        self.ser.close()
+        while True:
+            time.sleep(2)
+            try:
+                self.ser.open()
+                time.sleep(3)
+                self.ser.reset_input_buffer()
+                return
+            except (serial.SerialException, OSError):
+                pass
 
     def command(self, cmd, timeout=10):
         self.ser.write((cmd + "\n").encode())
@@ -147,8 +178,9 @@ def main():
         push(board, urls)
         if not args.every:
             break
-        print("%d 分钟后再推一次（Ctrl+C 退出）" % args.every)
-        time.sleep(args.every * 60)
+        print("%d 分钟后再推一次；板子重启的话马上重推（Ctrl+C 退出）" % args.every)
+        if board.watch(args.every * 60):
+            print("板子重启了，重新推送")
 
 
 if __name__ == "__main__":

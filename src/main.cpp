@@ -16,6 +16,13 @@
 #include <esp_core_dump.h>
 #include <esp_sleep.h>
 #include <sys/time.h>
+#if __has_include(<esp_rtc_time.h>)
+#include <esp_rtc_time.h>
+#define RTC_TIME_US() esp_rtc_get_time_us()
+#else
+#include <esp_private/esp_clk.h>
+#define RTC_TIME_US() esp_clk_rtc_time()
+#endif
 #include <time.h>
 
 #include <algorithm>
@@ -192,6 +199,8 @@ struct CpuBoost {
   ~CpuBoost() { setCpuFrequencyMhz(CPU_MHZ_IDLE); }
 };
 
+void removeUsbIcs(int from);
+
 // 同步节假日（当年 + 次年）和在线日历
 void syncData() {
   int y, m, d;
@@ -208,6 +217,7 @@ void syncData() {
   ics::LocalTime from, to;
   eventWindow(y, m, d, from, to);
   icsResult = net::fetchCalendars(from, to, events);
+  if (wifi::connected() && icsResult.ok > 0 && icsResult.error.empty()) removeUsbIcs(1);  // 联网同步成功，USB 缓存用不上了
   icsFailures = icsResult.error.empty() ? 0 : icsFailures + 1;
   lastSync = time(nullptr);
   syncedDay = day;
@@ -381,6 +391,53 @@ void runSync(bool online) {
 //   #render                    用收到的日历替换现有日程，重画并刷墨水屏
 constexpr size_t USB_FEED_CHUNK = 1024;
 
+// 电脑一打开串口（VS Code 串口监视器、usb_feed.py）板子就会复位：系统时间清零、内存里的日程丢了，又没网，
+// 过一会儿就进了配网画面。所以 USB 喂的数据要扛得住复位：
+//   时间：RTC 定时器复位后接着走（只有断电才清零），把“对时那一刻的 Unix 时间 + RTC 读数”存在复位不清的内存里，开机按差值恢复
+//   日历：原始 iCal 存进 LittleFS（/usb-ics-N.ics），开机重新解析；之后联网同步成功就删掉
+constexpr uint32_t kUsbClockMagic = 0x55534243;
+RTC_NOINIT_ATTR struct {
+  uint32_t magic;
+  int64_t unixUs;
+  uint64_t rtcUs;
+} usbClock;
+
+std::string usbIcsPath(int n) { return "/usb-ics-" + std::to_string(n) + ".ics"; }
+
+void removeUsbIcs(int from) {
+  for (int n = from; LittleFS.exists(usbIcsPath(n).c_str()); n++) LittleFS.remove(usbIcsPath(n).c_str());
+}
+
+// 开机：把 USB 喂过的日历读回来（需要系统时间有效）
+void restoreUsbFeed() {
+  // 系统时间一般复位后还在（RTC 接着走），万一没了再用 usbClock 恢复；断电后两样都没了，只能等电脑重新推
+  if (!net::timeValid() && esp_reset_reason() != ESP_RST_POWERON && usbClock.magic == kUsbClockMagic) {
+    const int64_t now = usbClock.unixUs + static_cast<int64_t>(RTC_TIME_US() - usbClock.rtcUs);
+    timeval tv{static_cast<time_t>(now / 1000000), static_cast<suseconds_t>(now % 1000000)};
+    settimeofday(&tv, nullptr);
+    LOGF("用复位前 USB 对的时间恢复系统时间");
+  }
+  if (!LittleFS.exists(usbIcsPath(1).c_str())) return;
+  int y, m, d;
+  if (!today(y, m, d)) return;
+  ics::LocalTime from, to;
+  eventWindow(y, m, d, from, to);
+  std::vector<ics::Event> merged;
+  int n = 1;
+  for (; LittleFS.exists(usbIcsPath(n).c_str()); n++) {
+    File f = LittleFS.open(usbIcsPath(n).c_str(), "r");
+    ics::Parser parser(from, to, TZ_OFFSET_SEC);
+    char buf[512];
+    while (f.available()) parser.feed(buf, f.read(reinterpret_cast<uint8_t*>(buf), sizeof buf));
+    f.close();
+    parser.finish();
+    merged.insert(merged.end(), parser.events().begin(), parser.events().end());
+  }
+  ics::sortEvents(merged);
+  events.swap(merged);
+  LOGF("从 USB 缓存读回 %d 个日历、%u 条日程", n - 1, events.size());
+}
+
 struct UsbFeed {
   enum Mode { kNone, kHoliday, kIcs } mode = kNone;
   int year = 0;
@@ -388,6 +445,7 @@ struct UsbFeed {
   std::unique_ptr<ics::Parser> parser;    // 当前日历
   std::vector<ics::Event> merged;         // 已收完的日历
   int calendars = 0;
+  File icsFile;                           // 当前日历同时存一份到 LittleFS（见 restoreUsbFeed）
   std::string line;
   size_t dataLeft = 0;                    // 还要收多少字节原始数据
 };
@@ -415,6 +473,7 @@ void feedFinishPart() {
     feed.body = String();
   } else if (feed.mode == UsbFeed::kIcs && feed.parser) {
     feed.parser->finish();
+    if (feed.icsFile) feed.icsFile.close();
     feed.calendars++;
     LOGF("USB：日历 #%d：%u 个 VEVENT，窗口内 %u 条", feed.calendars, feed.parser->veventCount(),
          feed.parser->events().size());
@@ -431,6 +490,7 @@ void feedCommand(const std::string& cmd) {
   if (cmd.rfind("#time ", 0) == 0) {
     timeval tv{static_cast<time_t>(strtoll(cmd.c_str() + 6, nullptr, 10)), 0};
     settimeofday(&tv, nullptr);
+    usbClock = {kUsbClockMagic, static_cast<int64_t>(tv.tv_sec) * 1000000, RTC_TIME_US()};
     LOGF("USB：已对时");
     feedReply(true, "time");
   } else if (cmd.rfind("#holiday ", 0) == 0) {
@@ -445,6 +505,7 @@ void feedCommand(const std::string& cmd) {
     eventWindow(y, m, d, from, to);
     feed.mode = UsbFeed::kIcs;
     feed.parser.reset(new ics::Parser(from, to, TZ_OFFSET_SEC));
+    feed.icsFile = LittleFS.open(usbIcsPath(feed.calendars + 1).c_str(), "w");
     feedReply(true, "");
   } else if (cmd.rfind("#data ", 0) == 0) {
     feed.dataLeft = strtoul(cmd.c_str() + 6, nullptr, 10);
@@ -460,6 +521,7 @@ void feedCommand(const std::string& cmd) {
     if (feed.calendars > 0) {
       ics::sortEvents(feed.merged);
       events.swap(feed.merged);
+      removeUsbIcs(feed.calendars + 1);  // 上次多出来的日历
     }
     feed.merged.clear();
     feed.calendars = 0;
@@ -487,6 +549,7 @@ void usbFeed() {
         feed.body.concat(reinterpret_cast<const char*>(buf), n);
       } else if (feed.mode == UsbFeed::kIcs && feed.parser) {
         feed.parser->feed(reinterpret_cast<const char*>(buf), n);
+        if (feed.icsFile) feed.icsFile.write(buf, n);
       }
       feed.dataLeft -= n;
       if (feed.dataLeft == 0) feedReply(true, "");
@@ -589,6 +652,7 @@ void setup() {
   setenv("TZ", TZ_POSIX, 1);
   tzset();
   settings::begin();
+  restoreUsbFeed();
   epd::begin();
   led::begin();
   LOGF("%s", DEBUG_MODE ? "开发模式：WiFi 一直联网，不睡眠" : "省电模式：WiFi 按需打开，空闲时浅睡眠");
