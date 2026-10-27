@@ -389,6 +389,7 @@ void runSync(bool online) {
 //   #data <字节数>             后面紧跟这么多字节的原始数据（每块最多 USB_FEED_CHUNK 字节）
 //   #done                      当前这份数据发完
 //   #render                    用收到的日历替换现有日程，重画并刷墨水屏
+//   #sync                      调试用：马上联网同步一次
 constexpr size_t USB_FEED_CHUNK = 1024;
 
 // 电脑一打开串口（VS Code 串口监视器、usb_feed.py）板子就会复位：系统时间清零、内存里的日程丢了，又没网，
@@ -515,6 +516,11 @@ void feedCommand(const std::string& cmd) {
     }
   } else if (cmd == "#done") {
     feedFinishPart();
+  } else if (cmd == "#sync") {  // 调试用：马上联网对时、同步、重画（跟网页上的“同步”一样）
+    if (wifi::connected()) net::syncTime(5000);
+    syncData();
+    render(previewDay < 0);
+    feedReply(icsResult.error.empty(), "sync " + std::to_string(events.size()) + " " + icsResult.error);
   } else if (cmd == "#render") {
     int y, m, d;
     if (!today(y, m, d)) return feedReply(false, "先发 #time 对时");

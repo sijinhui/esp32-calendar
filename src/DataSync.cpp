@@ -29,9 +29,12 @@ class ParserSink : public Stream {
   explicit ParserSink(ics::Parser& parser) : parser_(parser) {}
   size_t write(uint8_t c) override { return write(&c, 1); }
   size_t write(const uint8_t* buf, size_t n) override {
+    for (size_t i = 0; i < n && head_.size() < 64; i++) head_ += static_cast<char>(buf[i]);
     parser_.feed(reinterpret_cast<const char*>(buf), n);
     return n;
   }
+  // 内容是不是 iCal：需要网页登录的 WiFi 会把请求劫持到登录页，HTTP 200 但内容是 HTML
+  bool looksLikeIcs() const { return head_.find("BEGIN:VCALENDAR") != std::string::npos; }
   int available() override { return 0; }
   int read() override { return -1; }
   int peek() override { return -1; }
@@ -39,6 +42,7 @@ class ParserSink : public Stream {
 
  private:
   ics::Parser& parser_;
+  std::string head_;  // 开头几十个字节
 };
 
 // 跳转地址：Location 可能是完整 URL、以 / 开头的绝对路径，或者相对路径
@@ -192,6 +196,8 @@ void loadHolidays(HolidayCN& holidays, int year, bool online) {
     }
     // 次年的安排一般 11 月才公布，之前 404 是正常的
     LOGF("节假日数据 %d 下载失败：%s", year, code == HTTP_CODE_OK ? "格式错误" : error.c_str());
+    // 收到的不是 JSON：多半是需要网页登录的 WiFi（公司 / 酒店）把请求劫持到了登录页，打出开头方便判断
+    if (code == HTTP_CODE_OK) LOGF("  收到的内容开头：%s", body.substring(0, 160).c_str());
   }
 
   if (holidays.hasYear(year) || !LittleFS.exists(path)) return;
@@ -226,8 +232,12 @@ IcsResult fetchCalendars(ics::LocalTime from, ics::LocalTime to, std::vector<ics
     ics::Parser parser(from, to, TZ_OFFSET_SEC);
     ParserSink sink(parser);
     std::string error;
-    const int code = httpGet(url.c_str(), &sink, nullptr, error);
+    int code = httpGet(url.c_str(), &sink, nullptr, error);
     parser.finish();
+    if (code == HTTP_CODE_OK && !sink.looksLikeIcs()) {
+      code = -1;
+      error = "收到的不是日历（WiFi 可能需要网页登录）";
+    }
     if (code != HTTP_CODE_OK) {
       LOGF("日历 #%d 同步失败：%s", index, error.c_str());
       result.error = error;
