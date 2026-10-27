@@ -25,15 +25,16 @@
 
 #if CONFIG_IDF_TARGET_ESP32C5
 // Seeed XIAO ESP32-C5（https://wiki.seeedstudio.com/cn/xiao_esp32c5_getting_started/）：
-//   右排 3V3 下面紧挨着 D10 D9 D8：SDI 接 D10、BUSY 接 D9、SCL 接 D8（D10/D8 正好是硬件 SPI 的 MOSI/SCK）
-//   左排：D/C 接 D0、CS 接 D1、RES 接 D3；屏幕的 3.3V、GND 接右排 3V3、GND
-// 避开了 D2（GPIO25 启动引脚，BUSY 这种输入接上去可能影响开机）、D6/D7 串口、GPIO27 用户灯、GPIO28 BOOT 键
-#define EPD_PIN_BUSY 9  // D9
-#define EPD_PIN_CS 0    // D1
-#define EPD_PIN_DC 1    // D0，驱动板上标 D/C
-#define EPD_PIN_RST 7   // D3，驱动板上标 RES（GPIO7 是启动引脚，但只影响 SDIO 下载模式，当输出没问题）
-#define EPD_PIN_MOSI 10 // D10，驱动板上标 SDI（有的屏标 DIN / SDA）
-#define EPD_PIN_SCK 8   // D8，驱动板上标 SCL（有的屏标 CLK）
+//   8PIN 驱动板的丝印顺序 BUSY CS D/C RES SDI SCL，6 根信号线一排顺着插到左排 D1~D6；屏幕的 3.3V、GND 接右排 3V3、GND
+//   （SPI 走 GPIO 矩阵，用哪个脚都行，不必守着 D8/D10）
+//   D0 空着：它和 D1 是排针上仅有的低功耗引脚（LP GPIO），以后改深度睡眠时外接唤醒按键用（BOOT 键 GPIO28 叫不醒深度睡眠）
+//   BUSY 是屏幕往外输出的信号，不能放 D6（开机时串口往外发日志，会和屏幕顶着）或 D2（GPIO25 启动引脚），所以只能正着插
+#define EPD_PIN_BUSY 0  // D1
+#define EPD_PIN_CS 25   // D2（GPIO25 是启动引脚，CS 是屏幕的输入，不会影响开机）
+#define EPD_PIN_DC 7    // D3，驱动板上标 D/C（GPIO7 是启动引脚，但只影响 SDIO 下载模式，当输出没问题）
+#define EPD_PIN_RST 23  // D4，驱动板上标 RES
+#define EPD_PIN_MOSI 24 // D5，驱动板上标 SDI（有的屏标 DIN / SDA）
+#define EPD_PIN_SCK 11  // D6，驱动板上标 SCL（有的屏标 CLK）；开机串口日志会让它抖几下，屏幕初始化前会先复位，没影响
 #else
 // 接线（ESP32-S3 任意 GPIO 都可以，避开 0/3/45/46 启动引脚、19/20 USB、26~37 Flash/PSRAM、43/44 串口日志、48 RGB 灯）
 // 8PIN 通用驱动板的丝印顺序是 BUSY CS D/C RES SDI SCL；DevKitC 有 3V3 的那排排针第 4~9 位是 4 5 6 7 15 16，
